@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -35,7 +35,7 @@ class NetCamView : public GenericNetCamView
     Q_OBJECT
 
 public:
-    NetCamView(int friendId, QWidget* parent = nullptr);
+    NetCamView(ToxPk friendPk, QWidget* parent = nullptr);
     ~NetCamView();
 
     virtual void show(VideoSource* source, const QString& title);

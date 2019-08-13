@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -56,18 +56,7 @@ bool handleToxURI(const QString& toxURI)
     Core* core = nexus.getCore();
 
     while (!core) {
-        if (!nexus.isRunning())
-            return false;
-
         core = nexus.getCore();
-        qApp->processEvents();
-        QThread::msleep(10);
-    }
-
-    while (!core->isReady()) {
-        if (!nexus.isRunning())
-            return false;
-
         qApp->processEvents();
         QThread::msleep(10);
     }

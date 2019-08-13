@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,9 +22,12 @@
 
 #include "genericsettings.h"
 
+#include <memory>
 class Core;
 class QTimer;
 class QString;
+class UpdateCheck;
+class QLayoutItem;
 
 namespace Ui {
 class AboutSettings;
@@ -34,18 +37,21 @@ class AboutForm : public GenericForm
 {
     Q_OBJECT
 public:
-    AboutForm();
+    AboutForm(UpdateCheck* updateCheck);
     ~AboutForm();
     virtual QString getFormName() final override
     {
         return tr("About");
     }
 
-protected:
-private slots:
-    void showUpdateProgress();
-    virtual void hideEvent(QHideEvent*) final override;
-    virtual void showEvent(QShowEvent*) final override;
+public slots:
+#ifndef APPIMAGE_UPDATER_BRIDGE_ENABLED
+    void onUpdateAvailable(QString latestVersion, QUrl link);
+#else
+    void onUpdateAvailable();
+#endif
+    void onUpToDate();
+    void onUpdateCheckFailed();
 
 private:
     void retranslateUi();
@@ -55,6 +61,10 @@ private:
 private:
     Ui::AboutSettings* bodyUI;
     QTimer* progressTimer;
+    UpdateCheck* updateCheck;
+#ifndef APPIMAGE_UPDATER_BRIDGE_ENABLED
+    QMetaObject::Connection linkConnection;
+#endif
 };
 
 #endif // ABOUTFORM_H

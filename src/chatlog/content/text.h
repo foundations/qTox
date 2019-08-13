@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -21,8 +21,10 @@
 #define TEXT_H
 
 #include "../chatlinecontent.h"
+#include "src/widget/style.h"
 
 #include <QFont>
+#include <QTextCursor>
 
 class QTextDocument;
 
@@ -31,8 +33,15 @@ class Text : public ChatLineContent
     Q_OBJECT
 
 public:
+    enum TextType
+    {
+        NORMAL,
+        ACTION,
+        CUSTOM
+    };
+
     Text(const QString& txt = "", const QFont& font = QFont(), bool enableElide = false,
-         const QString& rawText = QString(), const QColor c = Qt::black);
+         const QString& rawText = QString(), const TextType& type = NORMAL, const QColor& custom = Style::getColor(Style::MainText));
     virtual ~Text();
 
     void setText(const QString& txt);
@@ -56,11 +65,12 @@ public:
     virtual void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) final;
 
     virtual void visibilityChanged(bool keepInMemory) final;
+    virtual void reloadTheme() final override;
 
     virtual qreal getAscent() const final;
     virtual void mousePressEvent(QGraphicsSceneMouseEvent* event) final override;
     virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent* event) final override;
-    void hoverMoveEvent(QGraphicsSceneHoverEvent* event) final override;
+    void hoverMoveEvent(QGraphicsSceneHoverEvent* event) final override;    
 
     virtual QString getText() const final;
     QString getLinkAt(QPointF scenePos) const;
@@ -70,7 +80,7 @@ protected:
     void regenerate();
     void freeResources();
 
-    QSizeF idealSize();
+    virtual QSizeF idealSize();
     int cursorFromPos(QPointF scenePos, bool fuzzy = true) const;
     int getSelectionEnd() const;
     int getSelectionStart() const;
@@ -78,14 +88,17 @@ protected:
     QString extractSanitizedText(int from, int to) const;
     QString extractImgTooltip(int pos) const;
 
+    QTextDocument* doc = nullptr;
+    QSizeF size;
+    qreal width = 0.0;
+
 private:
     void selectText(QTextCursor& cursor, const std::pair<int, int>& point);
+    QColor textColor() const;
 
-    QTextDocument* doc = nullptr;
     QString text;
     QString rawText;
     QString selectedText;
-    QSizeF size;
     bool keepInMemory = false;
     bool elide = false;
     bool dirty = false;
@@ -93,10 +106,14 @@ private:
     int selectionEnd = -1;
     int selectionAnchor = -1;
     qreal ascent = 0.0;
-    qreal width = 0.0;
     QFont defFont;
     QString defStyleSheet;
+    TextType textType;
     QColor color;
+    QColor customColor;
+
+    QTextCursor selectCursor;
+    std::pair<int, int> selectPoint{0, 0};
 };
 
 #endif // TEXT_H

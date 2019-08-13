@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -19,23 +19,20 @@
 
 
 #include "friend.h"
-#include "src/core/core.h"
-#include "src/model/group.h"
-#include "src/grouplist.h"
-#include "src/nexus.h"
+#include "src/model/status.h"
 #include "src/persistence/profile.h"
 #include "src/widget/form/chatform.h"
 
-Friend::Friend(uint32_t friendId, const ToxPk& friendPk, const QString& userAlias)
-    : userName{Core::getInstance()->getPeerName(friendPk)}
+Friend::Friend(uint32_t friendId, const ToxPk& friendPk, const QString& userAlias, const QString& userName)
+    : userName{userName}
     , userAlias{userAlias}
     , friendPk{friendPk}
     , friendId{friendId}
     , hasNewEvents{false}
-    , friendStatus{Status::Offline}
+    , friendStatus{Status::Status::Offline}
 {
     if (userName.isEmpty()) {
-        userName = friendPk.toString();
+        this->userName = friendPk.toString();
     }
 }
 
@@ -59,7 +56,7 @@ void Friend::setName(const QString& _name)
     }
     if (userName != name) {
         userName = name;
-        emit nameChanged(friendId, name);
+        emit nameChanged(friendPk, name);
     }
 
     const auto newDisplayed = getDisplayedName();
@@ -67,6 +64,7 @@ void Friend::setName(const QString& _name)
         emit displayedNameChanged(newDisplayed);
     }
 }
+
 /**
  * @brief Friend::setAlias sets the alias for the friend
  * @param alias new alias, removes it if set to an empty string
@@ -76,7 +74,7 @@ void Friend::setAlias(const QString& alias)
     if (userAlias == alias) {
         return;
     }
-    emit aliasChanged(friendId, alias);
+    emit aliasChanged(friendPk, alias);
 
     // save old displayed name to be able to compare for changes
     const auto oldDisplayed = getDisplayedName();
@@ -92,7 +90,7 @@ void Friend::setStatusMessage(const QString& message)
 {
     if (statusMessage != message) {
         statusMessage = message;
-        emit statusMessageChanged(friendId, message);
+        emit statusMessageChanged(friendPk, message);
     }
 }
 
@@ -121,6 +119,11 @@ bool Friend::hasAlias() const
     return !userAlias.isEmpty();
 }
 
+QString Friend::getUserName() const
+{
+    return userName;
+}
+
 const ToxPk& Friend::getPublicKey() const
 {
     return friendPk;
@@ -129,6 +132,11 @@ const ToxPk& Friend::getPublicKey() const
 uint32_t Friend::getId() const
 {
     return friendId;
+}
+
+const ContactId& Friend::getPersistentId() const
+{
+    return friendPk;
 }
 
 void Friend::setEventFlag(bool flag)
@@ -141,15 +149,25 @@ bool Friend::getEventFlag() const
     return hasNewEvents;
 }
 
-void Friend::setStatus(Status s)
+void Friend::setStatus(Status::Status s)
 {
     if (friendStatus != s) {
         friendStatus = s;
-        emit statusChanged(friendId, friendStatus);
+        emit statusChanged(friendPk, friendStatus);
     }
 }
 
-Status Friend::getStatus() const
+Status::Status Friend::getStatus() const
 {
     return friendStatus;
+}
+
+bool Friend::isOnline() const
+{
+    return friendStatus != Status::Status::Offline && friendStatus != Status::Status::Blocked;
+}
+
+bool Friend::useHistory() const
+{
+    return true;
 }

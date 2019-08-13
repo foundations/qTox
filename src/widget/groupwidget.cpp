@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -27,36 +27,37 @@
 #include <QMimeData>
 #include <QPalette>
 
-#include "contentdialog.h"
 #include "maskablepixmapwidget.h"
 #include "form/groupchatform.h"
 #include "src/core/core.h"
 #include "src/model/friend.h"
 #include "src/friendlist.h"
 #include "src/model/group.h"
+#include "src/model/status.h"
 #include "src/grouplist.h"
 #include "src/widget/friendwidget.h"
 #include "src/widget/style.h"
 #include "src/widget/translator.h"
+#include "src/widget/widget.h"
 #include "tool/croppinglabel.h"
 
 GroupWidget::GroupWidget(std::shared_ptr<GroupChatroom> chatroom, bool compact)
     : GenericChatroomWidget(compact)
-    , groupId{static_cast<int>(chatroom->getGroup()->getId())}
+    , groupId{chatroom->getGroup()->getPersistentId()}
     , chatroom{chatroom}
 {
     avatar->setPixmap(Style::scaleSvgImage(":img/group.svg", avatar->width(), avatar->height()));
-    statusPic.setPixmap(QPixmap(":img/status/online.svg"));
+    statusPic.setPixmap(QPixmap(Status::getIconPath(Status::Status::Online)));
     statusPic.setMargin(3);
 
     Group* g = chatroom->getGroup();
     nameLabel->setText(g->getName());
 
-    updateUserCount();
+    updateUserCount(g->getPeersCount());
     setAcceptDrops(true);
 
     connect(g, &Group::titleChanged, this, &GroupWidget::updateTitle);
-    connect(g, &Group::userListChanged, this, &GroupWidget::updateUserCount);
+    connect(g, &Group::numPeersChanged, this, &GroupWidget::updateUserCount);
     connect(nameLabel, &CroppingLabel::editFinished, g, &Group::setName);
     Translator::registerHandler(std::bind(&GroupWidget::retranslateUi, this), this);
 }
@@ -66,9 +67,8 @@ GroupWidget::~GroupWidget()
     Translator::unregister(this);
 }
 
-void GroupWidget::updateTitle(uint32_t groupId, const QString& author, const QString& newName)
+void GroupWidget::updateTitle(const QString& author, const QString& newName)
 {
-    Q_UNUSED(groupId);
     Q_UNUSED(author);
     nameLabel->setText(newName);
 }
@@ -84,17 +84,12 @@ void GroupWidget::contextMenuEvent(QContextMenuEvent* event)
     QMenu menu(this);
 
     QAction* openChatWindow = nullptr;
-    QAction* removeChatWindow = nullptr;
-
-    // TODO: Move to model
-    ContentDialog* contentDialog = ContentDialog::getGroupDialog(groupId);
-    const bool notAlone = contentDialog != nullptr && contentDialog->chatroomWidgetCount() > 1;
-
-    if (contentDialog == nullptr || notAlone) {
+    if (chatroom->possibleToOpenInNewWindow() ) {
         openChatWindow = menu.addAction(tr("Open chat in new window"));
     }
 
-    if (contentDialog && contentDialog->hasGroupWidget(groupId, this)) {
+    QAction* removeChatWindow = nullptr;
+    if (chatroom->canBeRemovedFromWindow()) {
         removeChatWindow = menu.addAction(tr("Remove chat from this window"));
     }
 
@@ -120,9 +115,7 @@ void GroupWidget::contextMenuEvent(QContextMenuEvent* event)
     } else if (selectedItem == openChatWindow) {
         emit newWindowOpened(this);
     } else if (selectedItem == removeChatWindow) {
-        // TODO: move to model
-        ContentDialog* contentDialog = ContentDialog::getGroupDialog(groupId);
-        contentDialog->removeGroup(groupId);
+        chatroom->removeGroupFromDialogs();
     } else if (selectedItem == setTitle) {
         editName();
     }
@@ -145,7 +138,9 @@ void GroupWidget::mouseMoveEvent(QMouseEvent* ev)
 
     if ((dragStartPos - ev->pos()).manhattanLength() > QApplication::startDragDistance()) {
         QMimeData* mdata = new QMimeData;
-        mdata->setText(getGroup()->getName());
+        const Group* group = getGroup();
+        mdata->setText(group->getName());
+        mdata->setData("groupId", group->getPersistentId().getByteArray());
 
         QDrag* drag = new QDrag(this);
         drag->setMimeData(mdata);
@@ -154,10 +149,9 @@ void GroupWidget::mouseMoveEvent(QMouseEvent* ev)
     }
 }
 
-void GroupWidget::updateUserCount()
+void GroupWidget::updateUserCount(int numPeers)
 {
-    int peersCount = chatroom->getGroup()->getPeersCount();
-    statusMessageLabel->setText(tr("%n user(s) in chat", "", peersCount));
+    statusMessageLabel->setText(tr("%n user(s) in chat", "Number of users in chat", numPeers));
 }
 
 void GroupWidget::setAsActiveChatroom()
@@ -176,13 +170,9 @@ void GroupWidget::updateStatusLight()
 {
     Group* g = chatroom->getGroup();
 
-    if (g->getEventFlag()) {
-        statusPic.setPixmap(QPixmap(":img/status/online_notification.svg"));
-        statusPic.setMargin(1);
-    } else {
-        statusPic.setPixmap(QPixmap(":img/status/online.svg"));
-        statusPic.setMargin(3);
-    }
+    const bool event = g->getEventFlag();
+    statusPic.setPixmap(QPixmap(Status::getIconPath(Status::Status::Online, event)));
+    statusPic.setMargin(event ? 1 : 3);
 }
 
 QString GroupWidget::getStatusString() const
@@ -205,6 +195,11 @@ Group* GroupWidget::getGroup() const
     return chatroom->getGroup();
 }
 
+const Contact* GroupWidget::getContact() const
+{
+    return getGroup();
+}
+
 void GroupWidget::resetEventFlags()
 {
     chatroom->resetEventFlags();
@@ -212,9 +207,10 @@ void GroupWidget::resetEventFlags()
 
 void GroupWidget::dragEnterEvent(QDragEnterEvent* ev)
 {
-    // TODO: Send ToxPk in mimeData
-    const ToxId toxId = ToxId(ev->mimeData()->text());
-    const ToxPk pk = toxId.getPublicKey();
+    if (!ev->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    const ToxPk pk{ev->mimeData()->data("toxPk")};
     if (chatroom->friendExists(pk)) {
         ev->acceptProposedAction();
     }
@@ -233,8 +229,10 @@ void GroupWidget::dragLeaveEvent(QDragLeaveEvent*)
 
 void GroupWidget::dropEvent(QDropEvent* ev)
 {
-    const ToxId toxId = ToxId(ev->mimeData()->text());
-    const ToxPk pk = toxId.getPublicKey();
+    if (!ev->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    const ToxPk pk{ev->mimeData()->data("toxPk")};
     if (!chatroom->friendExists(pk)) {
         return;
     }
@@ -253,5 +251,6 @@ void GroupWidget::setName(const QString& name)
 
 void GroupWidget::retranslateUi()
 {
-    updateUserCount();
+    const Group* group = chatroom->getGroup();
+    updateUserCount(group->getPeersCount());
 }

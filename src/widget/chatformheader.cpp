@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -38,7 +38,7 @@ static const short MIC_BUTTONS_LAYOUT_SPACING = 4;
 static const short BUTTONS_LAYOUT_HOR_SPACING = 4;
 
 namespace {
-const QString STYLE_PATH = QStringLiteral(":/ui/chatForm/buttons.css");
+const QString STYLE_PATH = QStringLiteral("chatForm/buttons.css");
 
 const QString STATE_NAME[] = {
     QString{},
@@ -121,7 +121,7 @@ ChatFormHeader::ChatFormHeader(QWidget* parent)
     nameLabel->setMinimumHeight(Style::getFont(Style::Medium).pixelSize());
     nameLabel->setEditable(true);
     nameLabel->setTextFormat(Qt::PlainText);
-    connect(nameLabel, &CroppingLabel::editFinished, this, &ChatFormHeader::onNameChanged);
+    connect(nameLabel, &CroppingLabel::editFinished, this, &ChatFormHeader::nameChanged);
 
     headTextLayout = new QVBoxLayout();
     headTextLayout->addStretch();
@@ -281,6 +281,14 @@ QSize ChatFormHeader::getAvatarSize() const
     return QSize{avatar->width(), avatar->height()};
 }
 
+void ChatFormHeader::reloadTheme()
+{
+    callButton->setStyleSheet(Style::getStylesheet(STYLE_PATH));
+    videoButton->setStyleSheet(Style::getStylesheet(STYLE_PATH));
+    volButton->setStyleSheet(Style::getStylesheet(STYLE_PATH));
+    micButton->setStyleSheet(Style::getStylesheet(STYLE_PATH));
+}
+
 void ChatFormHeader::addWidget(QWidget* widget, int stretch, Qt::Alignment alignment)
 {
     headTextLayout->addWidget(widget, stretch, alignment);
@@ -294,12 +302,4 @@ void ChatFormHeader::addLayout(QLayout* layout)
 void ChatFormHeader::addStretch()
 {
     headTextLayout->addStretch();
-}
-
-void ChatFormHeader::onNameChanged(const QString& name)
-{
-    if (!name.isEmpty()) {
-        nameLabel->setText(name);
-        emit nameChanged(name);
-    }
 }

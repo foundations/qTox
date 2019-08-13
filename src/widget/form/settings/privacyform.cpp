@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -25,7 +25,6 @@
 #include <QMessageBox>
 
 #include "src/core/core.h"
-#include "src/core/recursivesignalblocker.h"
 #include "src/nexus.h"
 #include "src/persistence/history.h"
 #include "src/persistence/profile.h"
@@ -33,6 +32,7 @@
 #include "src/widget/form/setpassworddialog.h"
 #include "src/widget/form/settingswidget.h"
 #include "src/widget/gui.h"
+#include "src/widget/tool/recursivesignalblocker.h"
 #include "src/widget/translator.h"
 #include "src/widget/widget.h"
 
@@ -58,8 +58,8 @@ PrivacyForm::~PrivacyForm()
 void PrivacyForm::on_cbKeepHistory_stateChanged()
 {
     Settings::getInstance().setEnableLogging(bodyUI->cbKeepHistory->isChecked());
-    Widget::getInstance()->clearAllReceipts();
     if (!bodyUI->cbKeepHistory->isChecked()) {
+        emit clearAllReceipts();
         QMessageBox::StandardButton dialogDelHistory;
         dialogDelHistory =
             QMessageBox::question(nullptr, tr("Confirmation"),

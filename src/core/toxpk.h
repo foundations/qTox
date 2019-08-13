@@ -1,32 +1,37 @@
+/*
+    Copyright © 2019 by The qTox Project Contributors
+
+    This file is part of qTox, a Qt-based graphical interface for Tox.
+
+    qTox is libre software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    qTox is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with qTox.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef TOXPK_H
 #define TOXPK_H
 
+#include "src/core/contactid.h"
 #include <QByteArray>
-#include <QString>
 #include <cstdint>
 
-class ToxPk
+class ToxPk : public ContactId
 {
 public:
     ToxPk();
     ToxPk(const ToxPk& other);
     explicit ToxPk(const QByteArray& rawId);
     explicit ToxPk(const uint8_t* rawId);
-    ToxPk& operator=(const ToxPk& other) = default;
-    ToxPk& operator=(ToxPk&& other) = default;
-
-    bool operator==(const ToxPk& other) const;
-    bool operator!=(const ToxPk& other) const;
-    bool operator<(const ToxPk& other) const;
-    QString toString() const;
-    QByteArray getKey() const;
-    const uint8_t* getBytes() const;
-    bool isEmpty() const;
-
-    static int getPkSize();
-
-private:
-    QByteArray key;
+    int getSize() const override;
 };
 
 #endif // TOXPK_H

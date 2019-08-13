@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,7 +18,6 @@
 */
 
 #include <QtCore/qsystemdetection.h>
-#ifdef Q_OS_WIN32
 #include "src/platform/timer.h"
 #include <windows.h>
 
@@ -30,5 +29,3 @@ uint32_t Platform::getIdleTime()
         return GetTickCount() - info.dwTime;
     return 0;
 }
-
-#endif // Q_OS_WIN32

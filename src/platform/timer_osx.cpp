@@ -5,7 +5,7 @@
     <https://hg.pidgin.im/pidgin/main/file/13e4ae613a6a/COPYRIGHT> ).
 
     Copyright © 2006 by Richard Laager
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -24,7 +24,6 @@
 */
 
 #include <QtCore/qsystemdetection.h>
-#if defined(__APPLE__) && defined(__MACH__)
 #include "src/platform/timer.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
@@ -50,5 +49,3 @@ uint32_t Platform::getIdleTime()
 
     return idleTime_ns / 1000000;
 }
-
-#endif // defined(__APPLE__) && defined(__MACH__)

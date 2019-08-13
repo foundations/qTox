@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -31,10 +31,10 @@
 #include <QFrame>
 #include <QLabel>
 
-NetCamView::NetCamView(int friendId, QWidget* parent)
+NetCamView::NetCamView(ToxPk friendPk, QWidget* parent)
     : GenericNetCamView(parent)
     , selfFrame{nullptr}
-    , friendPk{FriendList::findFriend(friendId)->getPublicKey()}
+    , friendPk{friendPk}
     , e(false)
 {
     videoSurface = new VideoSurface(Nexus::getProfile()->loadAvatar(friendPk), this);

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -31,28 +31,29 @@ class Group;
 class TabCompleter;
 class FlowLayout;
 class QTimer;
+class GroupId;
+class IMessageDispatcher;
+class Message;
 
 class GroupChatForm : public GenericChatForm
 {
     Q_OBJECT
 public:
-    explicit GroupChatForm(Group* chatGroup);
+    explicit GroupChatForm(Group* chatGroup, IChatLog& chatLog, IMessageDispatcher& messageDispatcher);
     ~GroupChatForm();
 
     void peerAudioPlaying(ToxPk peerPk);
 
 private slots:
-    void onSendTriggered() override;
     void onScreenshotClicked() override;
     void onAttachClicked() override;
     void onMicMuteToggle();
     void onVolMuteToggle();
     void onCallClicked();
-    void onUserListChanged();
-    void onTitleChanged(uint32_t groupId, const QString& author, const QString& title);
-    void searchInBegin(const QString& phrase, const ParameterSearch& parameter) override;
-    void onSearchUp(const QString& phrase, const ParameterSearch& parameter) override;
-    void onSearchDown(const QString& phrase, const ParameterSearch& parameter) override;
+    void onUserJoined(const ToxPk& user, const QString& name);
+    void onUserLeft(const ToxPk& user, const QString& name);
+    void onPeerNameChanged(const ToxPk& peer, const QString& oldName, const QString& newName);
+    void onTitleChanged(const QString& author, const QString& title);
     void onLabelContextMenuRequested(const QPoint& localPos);
 
 protected:
@@ -65,8 +66,9 @@ protected:
 
 private:
     void retranslateUi();
-    void updateUserCount();
+    void updateUserCount(int numPeers);
     void updateUserNames();
+    void leaveGroupCall();
 
 private:
     Group* group;

@@ -1,5 +1,25 @@
+/*
+    Copyright © 2014-2019 by The qTox Project Contributors
+
+    This file is part of qTox, a Qt-based graphical interface for Tox.
+
+    qTox is libre software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    qTox is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with qTox.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "src/grouplist.h"
 #include "src/model/chatroom/friendchatroom.h"
+#include "src/model/dialogs/idialogsmanager.h"
 #include "src/model/friend.h"
 #include "src/model/group.h"
 #include "src/persistence/settings.h"
@@ -21,8 +41,9 @@ QString getShortName(const QString& name)
 
 }
 
-FriendChatroom::FriendChatroom(Friend* frnd)
+FriendChatroom::FriendChatroom(Friend* frnd, IDialogsManager* dialogsManager)
     : frnd{frnd}
+    , dialogsManager{dialogsManager}
 {
 }
 
@@ -46,7 +67,7 @@ void FriendChatroom::setActive(bool _active)
 
 bool FriendChatroom::canBeInvited() const
 {
-    return frnd->getStatus() != Status::Offline;
+    return frnd->isOnline();
 }
 
 int FriendChatroom::getCircleId() const
@@ -140,4 +161,32 @@ QVector<CircleToDisplay> FriendChatroom::getOtherCircles() const
 void FriendChatroom::resetEventFlags()
 {
     frnd->setEventFlag(false);
+}
+
+bool FriendChatroom::possibleToOpenInNewWindow() const
+{
+    const auto friendPk = frnd->getPublicKey();
+    const auto dialogs = dialogsManager->getFriendDialogs(friendPk);
+    return !dialogs || dialogs->chatroomCount() > 1;
+}
+
+bool FriendChatroom::canBeRemovedFromWindow() const
+{
+    const auto friendPk = frnd->getPublicKey();
+    const auto dialogs = dialogsManager->getFriendDialogs(friendPk);
+    return dialogs && dialogs->hasContact(friendPk);
+}
+
+bool FriendChatroom::friendCanBeRemoved() const
+{
+    const auto friendPk = frnd->getPublicKey();
+    const auto dialogs = dialogsManager->getFriendDialogs(friendPk);
+    return !dialogs || !dialogs->hasContact(friendPk);
+}
+
+void FriendChatroom::removeFriendFromDialogs()
+{
+    const auto friendPk = frnd->getPublicKey();
+    auto dialogs = dialogsManager->getFriendDialogs(friendPk);
+    dialogs->removeFriend(friendPk);
 }

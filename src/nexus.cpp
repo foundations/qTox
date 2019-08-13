@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -23,6 +23,7 @@
 #include "src/core/core.h"
 #include "src/core/coreav.h"
 #include "src/model/groupinvite.h"
+#include "src/model/status.h"
 #include "src/persistence/profile.h"
 #include "src/widget/widget.h"
 #include "video/camerasource.h"
@@ -31,10 +32,9 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDesktopWidget>
-#include <QFile>
-#include <QImageReader>
 #include <QThread>
 #include <cassert>
+#include <src/audio/audio.h>
 #include <vpx/vpx_image.h>
 
 #ifdef Q_OS_MAC
@@ -60,7 +60,6 @@ Nexus::Nexus(QObject* parent)
     : QObject(parent)
     , profile{nullptr}
     , widget{nullptr}
-    , running{true}
 {}
 
 Nexus::~Nexus()
@@ -69,7 +68,7 @@ Nexus::~Nexus()
     widget = nullptr;
     delete profile;
     profile = nullptr;
-    Settings::getInstance().saveGlobal();
+    emit saveGlobal();
 #ifdef Q_OS_MAC
     delete globalMenuBar;
 #endif
@@ -86,7 +85,7 @@ void Nexus::start()
     qDebug() << "Starting up";
 
     // Setup the environment
-    qRegisterMetaType<Status>("Status");
+    qRegisterMetaType<Status::Status>("Status::Status");
     qRegisterMetaType<vpx_image>("vpx_image");
     qRegisterMetaType<uint8_t>("uint8_t");
     qRegisterMetaType<uint16_t>("uint16_t");
@@ -102,7 +101,11 @@ void Nexus::start()
     qRegisterMetaType<std::shared_ptr<VideoFrame>>("std::shared_ptr<VideoFrame>");
     qRegisterMetaType<ToxPk>("ToxPk");
     qRegisterMetaType<ToxId>("ToxId");
+    qRegisterMetaType<ToxPk>("GroupId");
+    qRegisterMetaType<ToxPk>("ContactId");
     qRegisterMetaType<GroupInvite>("GroupInvite");
+    qRegisterMetaType<ReceiptNum>("ReceiptNum");
+    qRegisterMetaType<RowId>("RowId");
 
     qApp->setQuitOnLastWindowClosed(false);
 
@@ -135,9 +138,6 @@ void Nexus::start()
     quitAction->setMenuRole(QAction::QuitRole);
     connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
-    windowMapper = new QSignalMapper(this);
-    connect(windowMapper, SIGNAL(mapped(QObject*)), this, SLOT(onOpenWindow(QObject*)));
-
     retranslateUi();
 #endif
     showMainGUI();
@@ -146,7 +146,7 @@ void Nexus::start()
 /**
  * @brief Hides the main GUI, delete the profile, and shows the login screen
  */
-void Nexus::showLogin()
+int Nexus::showLogin(const QString& profileName)
 {
     delete widget;
     widget = nullptr;
@@ -154,26 +154,72 @@ void Nexus::showLogin()
     delete profile;
     profile = nullptr;
 
-    LoginScreen loginScreen;
-    loginScreen.exec();
+    LoginScreen loginScreen{profileName};
+    connectLoginScreen(loginScreen);
 
-    profile = loginScreen.getProfile();
+    // TODO(kriby): Move core out of profile
+    // This is awkward because the core is in the profile
+    // The connection order ensures profile will be ready for bootstrap for now
+    connect(this, &Nexus::currentProfileChanged, this, &Nexus::bootstrapWithProfile);
+    int returnval = loginScreen.exec();
+    disconnect(this, &Nexus::currentProfileChanged, this, &Nexus::bootstrapWithProfile);
+    return returnval;
+}
+
+void Nexus::bootstrapWithProfile(Profile* p)
+{
+    // kriby: This is a hack until a proper controller is written
+
+    profile = p;
 
     if (profile) {
-        Nexus::getInstance().setProfile(profile);
-        Settings::getInstance().setCurrentProfile(profile->getName());
-        showMainGUI();
-    } else {
-        quit();
+        audioControl = std::unique_ptr<IAudioControl>(Audio::makeAudio(*settings));
+        assert(audioControl != nullptr);
+        profile->getCore()->getAv()->setAudio(*audioControl);
+        start();
     }
+}
+
+void Nexus::setSettings(Settings* settings)
+{
+    if (this->settings) {
+        QObject::disconnect(this, &Nexus::currentProfileChanged, this->settings,
+                            &Settings::updateProfileData);
+        QObject::disconnect(this, &Nexus::saveGlobal, this->settings, &Settings::saveGlobal);
+    }
+    this->settings = settings;
+    if (this->settings) {
+        QObject::connect(this, &Nexus::currentProfileChanged, this->settings,
+                         &Settings::updateProfileData);
+        QObject::connect(this, &Nexus::saveGlobal, this->settings, &Settings::saveGlobal);
+    }
+}
+
+void Nexus::connectLoginScreen(const LoginScreen& loginScreen)
+{
+    // TODO(kriby): Move connect sequences to a controller class object instead
+
+    // Nexus -> LoginScreen
+    QObject::connect(this, &Nexus::profileLoaded, &loginScreen, &LoginScreen::onProfileLoaded);
+    QObject::connect(this, &Nexus::profileLoadFailed, &loginScreen, &LoginScreen::onProfileLoadFailed);
+    // LoginScreen -> Nexus
+    QObject::connect(&loginScreen, &LoginScreen::createNewProfile, this, &Nexus::onCreateNewProfile);
+    QObject::connect(&loginScreen, &LoginScreen::loadProfile, this, &Nexus::onLoadProfile);
+    // LoginScreen -> Settings
+    QObject::connect(&loginScreen, &LoginScreen::autoLoginChanged, settings, &Settings::setAutoLogin);
+    QObject::connect(&loginScreen, &LoginScreen::autoLoginChanged, settings, &Settings::saveGlobal);
+    // Settings -> LoginScreen
+    QObject::connect(settings, &Settings::autoLoginChanged, &loginScreen,
+                     &LoginScreen::onAutoLoginChanged);
 }
 
 void Nexus::showMainGUI()
 {
+    // TODO(kriby): Rewrite as view-model connect sequence only, add to a controller class object
     assert(profile);
 
     // Create GUI
-    widget = Widget::getInstance();
+    widget = new Widget(*audioControl);
 
     // Start GUI
     widget->init();
@@ -188,64 +234,16 @@ void Nexus::showMainGUI()
     // Connections
     connect(profile, &Profile::selfAvatarChanged, widget, &Widget::onSelfAvatarLoaded);
 
-    Core* core = profile->getCore();
-    connect(core, &Core::requestSent, profile, &Profile::onRequestSent);
+    connect(profile, &Profile::coreChanged, widget, &Widget::onCoreChanged);
 
-    connect(core, &Core::connected, widget, &Widget::onConnected);
-    connect(core, &Core::disconnected, widget, &Widget::onDisconnected);
     connect(profile, &Profile::failedToStart, widget, &Widget::onFailedToStartCore,
             Qt::BlockingQueuedConnection);
-    connect(profile, &Profile::badProxy, widget, &Widget::onBadProxyCore, Qt::BlockingQueuedConnection);
-    connect(core, &Core::statusSet, widget, &Widget::onStatusSet);
-    connect(core, &Core::usernameSet, widget, &Widget::setUsername);
-    connect(core, &Core::statusMessageSet, widget, &Widget::setStatusMessage);
-    connect(core, &Core::friendAdded, widget, &Widget::addFriend);
-    connect(core, &Core::failedToAddFriend, widget, &Widget::addFriendFailed);
-    connect(core, &Core::friendUsernameChanged, widget, &Widget::onFriendUsernameChanged);
-    connect(core, &Core::friendStatusChanged, widget, &Widget::onFriendStatusChanged);
-    connect(core, &Core::friendStatusMessageChanged, widget, &Widget::onFriendStatusMessageChanged);
-    connect(core, &Core::friendRequestReceived, widget, &Widget::onFriendRequestReceived);
-    connect(core, &Core::friendMessageReceived, widget, &Widget::onFriendMessageReceived);
-    connect(core, &Core::groupInviteReceived, widget, &Widget::onGroupInviteReceived);
-    connect(core, &Core::groupMessageReceived, widget, &Widget::onGroupMessageReceived);
-    connect(core, &Core::groupNamelistChanged, widget,
-            &Widget::onGroupNamelistChangedOld); // TODO(sudden6): toxcore < 0.2.0, remove
-    connect(core, &Core::groupPeerlistChanged, widget, &Widget::onGroupPeerlistChanged);
-    connect(core, &Core::groupPeerNameChanged, widget, &Widget::onGroupPeerNameChanged);
-    connect(core, &Core::groupTitleChanged, widget, &Widget::onGroupTitleChanged);
-    connect(core, &Core::groupPeerAudioPlaying, widget, &Widget::onGroupPeerAudioPlaying);
-    connect(core, &Core::emptyGroupCreated, widget, &Widget::onEmptyGroupCreated);
-    connect(core, &Core::friendTypingChanged, widget, &Widget::onFriendTypingChanged);
-    connect(core, &Core::messageSentResult, widget, &Widget::onMessageSendResult);
-    connect(core, &Core::groupSentFailed, widget, &Widget::onGroupSendFailed);
 
-    connect(widget, &Widget::statusSet, core, &Core::setStatus);
-    connect(widget, &Widget::friendRequested, core, &Core::requestFriendship);
-    connect(widget, &Widget::friendRequestAccepted, core, &Core::acceptFriendRequest);
+    connect(profile, &Profile::badProxy, widget, &Widget::onBadProxyCore, Qt::BlockingQueuedConnection);
 
     profile->startCore();
 
     GUI::setEnabled(true);
-}
-
-/**
- * @brief Calls QApplication::quit(), and causes Nexus::isRunning() to return false
- */
-void Nexus::quit()
-{
-    running = false;
-    qApp->quit();
-}
-
-/**
- * @brief Returns true until Nexus::quit is called.
- *
- * Any blocking processEvents() loop should check this as a return condition,
- * since the application can not quit until control is returned to the event loop.
- */
-bool Nexus::isRunning()
-{
-    return running;
 }
 
 /**
@@ -288,14 +286,37 @@ Profile* Nexus::getProfile()
 }
 
 /**
- * @brief Unload the current profile, if any, and replaces it.
- * @param profile Profile to set.
+ * @brief Creates a new profile and replaces the current one.
+ * @param name New username
+ * @param pass New password
  */
-void Nexus::setProfile(Profile* profile)
+void Nexus::onCreateNewProfile(const QString& name, const QString& pass)
 {
-    getInstance().profile = profile;
-    if (profile)
-        Settings::getInstance().loadPersonal(profile);
+    setProfile(Profile::createProfile(name, pass, *settings));
+}
+
+/**
+ * Loads an existing profile and replaces the current one.
+ */
+void Nexus::onLoadProfile(const QString& name, const QString& pass)
+{
+    setProfile(Profile::loadProfile(name, pass, *settings));
+}
+/**
+ * Changes the loaded profile and notifies listeners.
+ * @param p
+ */
+void Nexus::setProfile(Profile* p)
+{
+    if (!p) {
+        emit profileLoadFailed();
+        // Warnings are issued during respective createNew/load calls
+        return;
+    } else {
+        emit profileLoaded();
+    }
+
+    emit currentProfileChanged(p);
 }
 
 /**
@@ -305,28 +326,6 @@ void Nexus::setProfile(Profile* profile)
 Widget* Nexus::getDesktopGUI()
 {
     return getInstance().widget;
-}
-
-QString Nexus::getSupportedImageFilter()
-{
-    QString res;
-    for (auto type : QImageReader::supportedImageFormats())
-        res += QString("*.%1 ").arg(QString(type));
-
-    return tr("Images (%1)", "filetype filter").arg(res.left(res.size() - 1));
-}
-
-/**
- * @brief Dangerous way to find out if a path is writable.
- * @param filepath Path to file which should be deleted.
- * @return True, if file writeable, false otherwise.
- */
-bool Nexus::tryRemoveFile(const QString& filepath)
-{
-    QFile tmp(filepath);
-    bool writable = tmp.open(QIODevice::WriteOnly);
-    tmp.remove();
-    return writable;
 }
 
 #ifdef Q_OS_MAC
@@ -390,8 +389,7 @@ void Nexus::updateWindowsArg(QWindow* closedWindow)
         QAction* action = windowActions->addAction(windowList[i]->title());
         action->setCheckable(true);
         action->setChecked(windowList[i] == activeWindow);
-        connect(action, SIGNAL(triggered()), windowMapper, SLOT(map()));
-        windowMapper->setMapping(action, windowList[i]);
+        connect(action, &QAction::triggered, [=] { onOpenWindow(windowList[i]);});
         windowMenu->addAction(action);
         dockMenu->insertAction(dockLast, action);
     }

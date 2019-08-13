@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -26,8 +26,10 @@
 #include "content/spinner.h"
 #include "content/text.h"
 #include "content/timestamp.h"
+#include "src/widget/style.h"
 
 #include <QDebug>
+#include <QCryptographicHash>
 
 #include "src/persistence/settings.h"
 #include "src/persistence/smileypack.h"
@@ -35,21 +37,20 @@
 #define NAME_COL_WIDTH 90.0
 #define TIME_COL_WIDTH 90.0
 
+
 ChatMessage::ChatMessage()
 {
 }
 
 ChatMessage::Ptr ChatMessage::createChatMessage(const QString& sender, const QString& rawMessage,
-                                                MessageType type, bool isMe, const QDateTime& date)
+                                                MessageType type, bool isMe, const QDateTime& date, bool colorizeName)
 {
     ChatMessage::Ptr msg = ChatMessage::Ptr(new ChatMessage);
 
     QString text = rawMessage.toHtmlEscaped();
     QString senderText = sender;
 
-    const QColor actionColor =
-        QColor("#1818FF"); // has to match the color in innerStyle.css (div.action)
-
+    auto textType = Text::NORMAL;
     // smileys
     if (Settings::getInstance().getUseEmoticons())
         text = SmileyPack::getInstance().smileyfied(text);
@@ -70,6 +71,7 @@ ChatMessage::Ptr ChatMessage::createChatMessage(const QString& sender, const QSt
         text = wrapDiv(text, "msg");
         break;
     case ACTION:
+        textType = Text::ACTION;
         senderText = "*";
         text = wrapDiv(QString("%1 %2").arg(sender.toHtmlEscaped(), text), "action");
         msg->setAsAction();
@@ -85,14 +87,25 @@ ChatMessage::Ptr ChatMessage::createChatMessage(const QString& sender, const QSt
     if (isMe)
         authorFont.setBold(true);
 
-    msg->addColumn(new Text(senderText, authorFont, true, sender,
-                            type == ACTION ? actionColor : Qt::black),
+    QColor color = Style::getColor(Style::MainText);
+    if (colorizeName) {
+        QByteArray hash = QCryptographicHash::hash((sender.toUtf8()), QCryptographicHash::Sha256);
+        quint8 *data = (quint8*)hash.data();
+
+        color.setHsv(data[0], 255, 196);
+
+        if (!isMe && textType == Text::NORMAL) {
+                textType = Text::CUSTOM;
+        }
+    }
+
+    msg->addColumn(new Text(senderText, authorFont, true, sender, textType, color),
                    ColumnFormat(NAME_COL_WIDTH, ColumnFormat::FixedSize, ColumnFormat::Right));
     msg->addColumn(new Text(text, baseFont, false, ((type == ACTION) && isMe)
                                                        ? QString("%1 %2").arg(sender, rawMessage)
                                                        : rawMessage),
                    ColumnFormat(1.0, ColumnFormat::VariableSize));
-    msg->addColumn(new Spinner(":/ui/chatArea/spinner.svg", QSize(16, 16), 360.0 / 1.6),
+    msg->addColumn(new Spinner(Style::getImagePath("chatArea/spinner.svg"), QSize(16, 16), 360.0 / 1.6),
                    ColumnFormat(TIME_COL_WIDTH, ColumnFormat::FixedSize, ColumnFormat::Right));
 
     if (!date.isNull())
@@ -110,13 +123,13 @@ ChatMessage::Ptr ChatMessage::createChatInfoMessage(const QString& rawMessage,
     QString img;
     switch (type) {
     case INFO:
-        img = ":/ui/chatArea/info.svg";
+        img = Style::getImagePath("chatArea/info.svg");
         break;
     case ERROR:
-        img = ":/ui/chatArea/error.svg";
+        img = Style::getImagePath("chatArea/error.svg");
         break;
     case TYPING:
-        img = ":/ui/chatArea/typing.svg";
+        img = Style::getImagePath("chatArea/typing.svg");
         break;
     }
 

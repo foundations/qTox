@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -21,7 +21,12 @@
 #ifndef OPENAL_H
 #define OPENAL_H
 
-#include "src/audio/audio.h"
+#include "src/audio/iaudiocontrol.h"
+#include "src/audio/backend/alsink.h"
+#include "src/audio/backend/alsource.h"
+
+#include <memory>
+#include <unordered_set>
 
 #include <atomic>
 #include <cmath>
@@ -40,7 +45,7 @@
 #include <AL/alext.h>
 #endif
 
-class OpenAL : public Audio
+class OpenAL : public IAudioControl
 {
     Q_OBJECT
 
@@ -48,8 +53,14 @@ public:
     OpenAL();
     virtual ~OpenAL();
 
-    qreal maxOutputVolume() const { return 1; }
-    qreal minOutputVolume() const { return 0; }
+    qreal maxOutputVolume() const
+    {
+        return 1;
+    }
+    qreal minOutputVolume() const
+    {
+        return 0;
+    }
     qreal outputVolume() const;
     void setOutputVolume(qreal volume);
 
@@ -76,20 +87,21 @@ public:
     QStringList outDeviceNames();
     QStringList inDeviceNames();
 
-    void subscribeOutput(uint& sourceId);
-    void unsubscribeOutput(uint& sourceId);
+    std::unique_ptr<IAudioSink> makeSink();
+    void destroySink(AlSink& sink);
 
-    void subscribeInput();
-    void unsubscribeInput();
+    std::unique_ptr<IAudioSource> makeSource();
+    void destroySource(AlSource& source);
 
-    void startLoop();
-    void stopLoop();
-    void playMono16Sound(const QByteArray& data);
-    void playMono16Sound(const QString& path);
+    void startLoop(uint sourceId);
+    void stopLoop(uint sourceId);
+    void playMono16Sound(AlSink& sink, const IAudioSink::Sound& sound);
     void stopActive();
 
     void playAudioBuffer(uint sourceId, const int16_t* data, int samples, unsigned channels,
                          int sampleRate);
+signals:
+    void startActive(qreal msec);
 
 protected:
     static void checkAlError() noexcept;
@@ -113,24 +125,32 @@ protected:
 private:
     virtual bool initInput(const QString& deviceName);
     virtual bool initOutput(const QString& outDevDescr);
-    void playMono16SoundCleanup();
+
+    void cleanupBuffers(uint sourceId);
+    void cleanupSound();
+
     float getVolume();
 
 protected:
     QThread* audioThread;
-    mutable QMutex audioLock;
+    mutable QMutex audioLock{QMutex::Recursive};
+    QString inDev{};
+    QString outDev{};
 
     ALCdevice* alInDev = nullptr;
-    quint32 inSubscriptions = 0;
-    QTimer captureTimer, playMono16Timer;
+    QTimer captureTimer;
+    QTimer cleanupTimer;
 
     ALCdevice* alOutDev = nullptr;
     ALCcontext* alOutContext = nullptr;
-    ALuint alMainSource = 0;
-    ALuint alMainBuffer = 0;
+
     bool outputInitialized = false;
 
-    QList<ALuint> peerSources;
+    // Qt containers need copy operators, so use stdlib containers
+    std::unordered_set<AlSink*> sinks;
+    std::unordered_set<AlSink*> soundSinks;
+    std::unordered_set<AlSource*> sources;
+
     int channels = 0;
     qreal gain = 0;
     qreal gainFactor = 1;

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -117,6 +117,13 @@ void ChatLine::fontChanged(const QFont& font)
 {
     for (ChatLineContent* c : content)
         c->fontChanged(font);
+}
+
+void ChatLine::reloadTheme()
+{
+    for (ChatLineContent* c : content) {
+        c->reloadTheme();
+    }
 }
 
 int ChatLine::getColumnCount()

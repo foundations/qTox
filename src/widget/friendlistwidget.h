@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,6 +22,8 @@
 
 #include "genericchatitemlayout.h"
 #include "src/core/core.h"
+#include "src/model/status.h"
+#include "src/persistence/settings.h"
 #include <QWidget>
 
 class QVBoxLayout;
@@ -33,24 +35,21 @@ class GroupWidget;
 class CircleWidget;
 class FriendListLayout;
 class GenericChatroomWidget;
+class CategoryWidget;
+class Friend;
 
 class FriendListWidget : public QWidget
 {
     Q_OBJECT
 public:
-    enum Mode : uint8_t
-    {
-        Name,
-        Activity,
-    };
-
+    using SortingMode = Settings::FriendListSortingMode;
     explicit FriendListWidget(Widget* parent, bool groupsOnTop = true);
     ~FriendListWidget();
-    void setMode(Mode mode);
-    Mode getMode() const;
+    void setMode(SortingMode mode);
+    SortingMode getMode() const;
 
     void addGroupWidget(GroupWidget* widget);
-    void addFriendWidget(FriendWidget* w, Status s, int circleIndex);
+    void addFriendWidget(FriendWidget* w, Status::Status s, int circleIndex);
     void removeGroupWidget(GroupWidget* w);
     void removeFriendWidget(FriendWidget* w);
     void addCircleWidget(int id);
@@ -61,18 +60,20 @@ public:
 
     void cycleContacts(GenericChatroomWidget* activeChatroomWidget, bool forward);
 
-    void updateActivityDate(const QDate& date);
+    void updateActivityTime(const QDateTime& date);
     void reDraw();
 
 signals:
     void onCompactChanged(bool compact);
+    void connectCircleWidget(CircleWidget& circleWidget);
+    void searchCircle(CircleWidget& circleWidget);
 
 public slots:
     void renameGroupWidget(GroupWidget* groupWidget, const QString& newName);
     void renameCircleWidget(CircleWidget* circleWidget, const QString& newName);
     void onFriendWidgetRenamed(FriendWidget* friendWidget);
     void onGroupchatPositionChanged(bool top);
-    void moveWidget(FriendWidget* w, Status s, bool add = false);
+    void moveWidget(FriendWidget* w, Status::Status s, bool add = false);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -85,8 +86,10 @@ private:
     CircleWidget* createCircleWidget(int id = -1);
     QLayout* nextLayout(QLayout* layout, bool forward) const;
     void moveFriends(QLayout* layout);
+    CategoryWidget* getTimeCategoryWidget(const Friend* frd) const;
+    void sortByMode(SortingMode mode);
 
-    Mode mode;
+    SortingMode mode;
     bool groupsOnTop;
     FriendListLayout* listLayout;
     GenericChatItemLayout* circleLayout = nullptr;

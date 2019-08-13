@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -49,7 +49,7 @@ public:
 
     static ChatMessage::Ptr createChatMessage(const QString& sender, const QString& rawMessage,
                                               MessageType type, bool isMe,
-                                              const QDateTime& date = QDateTime());
+                                              const QDateTime& date = QDateTime(), bool colorizeName = false);
     static ChatMessage::Ptr createChatInfoMessage(const QString& rawMessage, SystemMessageType type,
                                                   const QDateTime& date);
     static ChatMessage::Ptr createFileTransferMessage(const QString& sender, ToxFile file,

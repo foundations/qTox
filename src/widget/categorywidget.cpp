@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -21,6 +21,7 @@
 #include "friendlistlayout.h"
 #include "friendlistwidget.h"
 #include "friendwidget.h"
+#include "src/model/status.h"
 #include "src/widget/style.h"
 #include "tool/croppinglabel.h"
 #include <QBoxLayout>
@@ -48,7 +49,7 @@ CategoryWidget::CategoryWidget(bool compact, QWidget* parent)
     statusLabel->setObjectName("status");
     statusLabel->setTextFormat(Qt::PlainText);
 
-    statusPic.setPixmap(QPixmap(":/ui/chatArea/scrollBarRightArrow.svg"));
+    statusPic.setPixmap(QPixmap(Style::getImagePath("chatArea/scrollBarRightArrow.svg")));
 
     fullLayout = new QVBoxLayout(this);
     fullLayout->setSpacing(0);
@@ -90,9 +91,9 @@ void CategoryWidget::setExpanded(bool isExpanded, bool save)
 
     QString pixmapPath;
     if (isExpanded)
-        pixmapPath = ":/ui/chatArea/scrollBarDownArrow.svg";
+        pixmapPath = Style::getImagePath("chatArea/scrollBarDownArrow.svg");
     else
-        pixmapPath = ":/ui/chatArea/scrollBarRightArrow.svg";
+        pixmapPath = Style::getImagePath("chatArea/scrollBarRightArrow.svg");
     statusPic.setPixmap(QPixmap(pixmapPath));
     // The listWidget will recieve a enterEvent for some reason if now visible.
     // Using the following, we prevent that.
@@ -126,7 +127,7 @@ void CategoryWidget::editName()
     nameLabel->setMaximumWidth(QWIDGETSIZE_MAX);
 }
 
-void CategoryWidget::addFriendWidget(FriendWidget* w, Status s)
+void CategoryWidget::addFriendWidget(FriendWidget* w, Status::Status s)
 {
     listLayout->addFriendWidget(w, s);
     updateStatus();
@@ -134,7 +135,7 @@ void CategoryWidget::addFriendWidget(FriendWidget* w, Status s)
     w->reloadTheme(); // Otherwise theme will change when moving to another circle.
 }
 
-void CategoryWidget::removeFriendWidget(FriendWidget* w, Status s)
+void CategoryWidget::removeFriendWidget(FriendWidget* w, Status::Status s)
 {
     listLayout->removeFriendWidget(w, s);
     updateStatus();

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,6 +22,9 @@
 
 #include "text.h"
 #include <QDateTime>
+#include <QTextDocument>
+
+class QTextDocument;
 
 class Timestamp : public Text
 {
@@ -29,6 +32,9 @@ class Timestamp : public Text
 public:
     Timestamp(const QDateTime& time, const QString& format, const QFont& font);
     QDateTime getTime();
+
+protected:
+    QSizeF idealSize();
 
 private:
     QDateTime time;

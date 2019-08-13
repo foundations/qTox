@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -19,17 +19,18 @@
 
 #include "loadhistorydialog.h"
 #include "ui_loadhistorydialog.h"
+#include "src/model/ichatlog.h"
 #include "src/nexus.h"
 #include "src/persistence/history.h"
 #include "src/persistence/profile.h"
+#include <QCalendarWidget>
 #include <QDate>
 #include <QTextCharFormat>
-#include <QCalendarWidget>
 
-LoadHistoryDialog::LoadHistoryDialog(const ToxPk& friendPk, QWidget* parent)
+LoadHistoryDialog::LoadHistoryDialog(const IChatLog* chatLog, QWidget* parent)
     : QDialog(parent)
     , ui(new Ui::LoadHistoryDialog)
-    , friendPk(friendPk)
+    , chatLog(chatLog)
 {
     ui->setupUi(this);
     highlightDates(QDate::currentDate().year(), QDate::currentDate().month());
@@ -37,11 +38,15 @@ LoadHistoryDialog::LoadHistoryDialog(const ToxPk& friendPk, QWidget* parent)
             &LoadHistoryDialog::highlightDates);
 }
 
-LoadHistoryDialog::LoadHistoryDialog(QWidget* parent)
+LoadHistoryDialog::LoadHistoryDialog(Mode mode, QWidget* parent)
     : QDialog(parent)
     , ui(new Ui::LoadHistoryDialog)
 {
     ui->setupUi(this);
+
+    if (mode == Mode::search) {
+        enableSearchMode();
+    }
 }
 
 LoadHistoryDialog::~LoadHistoryDialog()
@@ -61,14 +66,21 @@ QDateTime LoadHistoryDialog::getFromDate()
     return res;
 }
 
-void LoadHistoryDialog::setTitle(const QString& title)
+LoadHistoryDialog::LoadType LoadHistoryDialog::getLoadType()
 {
-    setWindowTitle(title);
+    if (ui->loadTypeComboBox->currentIndex() == 0) {
+        return LoadType::from;
+    }
+
+    return LoadType::to;
 }
 
-void LoadHistoryDialog::setInfoLabel(const QString& info)
+void LoadHistoryDialog::enableSearchMode()
 {
-    ui->fromLabel->setText(info);
+    setWindowTitle(tr("Select Date Dialog"));
+    ui->fromLabel->setText(tr("Select a date"));
+    ui->loadTypeComboBox->setVisible(false);
+    ui->infoLabel->setVisible(false);
 }
 
 void LoadHistoryDialog::highlightDates(int year, int month)
@@ -76,15 +88,17 @@ void LoadHistoryDialog::highlightDates(int year, int month)
     History* history = Nexus::getProfile()->getHistory();
     QDate monthStart(year, month, 1);
     QDate monthEnd(year, month + 1, 1);
-    QList<History::DateMessages> counts =
-        history->getChatHistoryCounts(this->friendPk, monthStart, monthEnd);
+
+    // Max 31 days in a month
+    auto dateIdxs = chatLog->getDateIdxs(monthStart, 31);
 
     QTextCharFormat format;
     format.setFontWeight(QFont::Bold);
 
     QCalendarWidget* calendar = ui->fromDate;
-    for (History::DateMessages p : counts) {
-        format.setToolTip(tr("%1 messages").arg(p.count));
-        calendar->setDateTextFormat(monthStart.addDays(p.offsetDays), format);
+    for (const auto& item : dateIdxs) {
+        if (item.date < monthEnd) {
+            calendar->setDateTextFormat(item.date, format);
+        }
     }
 }

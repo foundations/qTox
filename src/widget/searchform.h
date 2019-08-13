@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -45,6 +45,7 @@ public:
     ParameterSearch getParameterSearch();
     void setFocusEditor();
     void insertEditor(const QString &text);
+    void reloadTheme();
 
 protected:
     virtual void showEvent(QShowEvent* event) final override;

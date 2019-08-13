@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -27,6 +27,9 @@
 
 #include "genericchatform.h"
 #include "src/core/core.h"
+#include "src/model/ichatlog.h"
+#include "src/model/imessagedispatcher.h"
+#include "src/model/status.h"
 #include "src/persistence/history.h"
 #include "src/widget/tool/screenshotgrabber.h"
 
@@ -43,17 +46,14 @@ class ChatForm : public GenericChatForm
 {
     Q_OBJECT
 public:
-    ChatForm(Friend* chatFriend, History* history);
+    ChatForm(Friend* chatFriend, IChatLog& chatLog, IMessageDispatcher& messageDispatcher);
     ~ChatForm();
     void setStatusMessage(const QString& newMessage);
-    void loadHistoryByDateRange(const QDateTime& since, bool processUndelivered = false);
-    void loadHistoryDefaultNum(bool processUndelivered = false);
 
-    void dischargeReceipt(int receipt);
     void setFriendTyping(bool isTyping);
-    OfflineMsgEngine* getOfflineMsgEngine();
 
     virtual void show(ContentLayout* contentLayout) final override;
+    virtual void reloadTheme() final override;
 
     static const QString ACTION_PREFIX;
 
@@ -65,24 +65,18 @@ signals:
     void endCallNotification();
     void rejectCall(uint32_t friendId);
     void acceptCall(uint32_t friendId);
+    void updateFriendActivity(Friend& frnd);
 
 public slots:
-    void startFileSend(ToxFile file);
-    void onFileRecvRequest(ToxFile file);
     void onAvInvite(uint32_t friendId, bool video);
     void onAvStart(uint32_t friendId, bool video);
     void onAvEnd(uint32_t friendId, bool error);
-    void onAvatarChanged(const ToxPk &friendPk, const QPixmap& pic);
+    void onAvatarChanged(const ToxPk& friendPk, const QPixmap& pic);
     void onFileNameChanged(const ToxPk& friendPk);
     void clearChatArea();
 
-protected slots:
-    void searchInBegin(const QString& phrase, const ParameterSearch& parameter) override;
-    void onSearchUp(const QString& phrase, const ParameterSearch& parameter) override;
-    void onSearchDown(const QString& phrase, const ParameterSearch& parameter) override;
-
 private slots:
-    void onSendTriggered() override;
+    void updateFriendActivityForFile(const ToxFile& file);
     void onAttachClicked() override;
     void onScreenshotClicked() override;
 
@@ -94,47 +88,18 @@ private slots:
     void onMicMuteToggle();
     void onVolMuteToggle();
 
-    void onFileSendFailed(uint32_t friendId, const QString& fname);
-    void onFriendStatusChanged(quint32 friendId, Status status);
+    void onFriendStatusChanged(quint32 friendId, Status::Status status);
     void onFriendTypingChanged(quint32 friendId, bool isTyping);
     void onFriendNameChanged(const QString& name);
-    void onFriendMessageReceived(quint32 friendId, const QString& message, bool isAction);
     void onStatusMessage(const QString& message);
-    void onReceiptReceived(quint32 friendId, int receipt);
-    void onLoadHistory();
     void onUpdateTime();
     void sendImage(const QPixmap& pixmap);
     void doScreenshot();
     void onCopyStatusMessage();
-    void onExportChat();
+
+    void callUpdateFriendActivity();
 
 private:
-    struct MessageMetadata
-    {
-        const bool isSelf;
-        const bool needSending;
-        const bool isAction;
-        const qint64 id;
-        const ToxPk authorPk;
-        const QDateTime msgDateTime;
-        MessageMetadata(bool isSelf, bool needSending, bool isAction, qint64 id, ToxPk authorPk,
-                        QDateTime msgDateTime)
-            : isSelf{isSelf}
-            , needSending{needSending}
-            , isAction{isAction}
-            , id{id}
-            , authorPk{authorPk}
-            , msgDateTime{msgDateTime}
-        {}
-    };
-    void handleLoadedMessages(QList<History::HistMessage> newHistMsgs, bool processUndelivered);
-    QDate addDateLineIfNeeded(QList<ChatLine::Ptr>& msgs, QDate const& lastDate,
-                              History::HistMessage const& newMessage, MessageMetadata const& metadata);
-    MessageMetadata getMessageMetadata(History::HistMessage const& histMessage);
-    ChatMessage::Ptr chatMessageFromHistMessage(History::HistMessage const& histMessage,
-                                                MessageMetadata const& metadata);
-    void sendLoadedMessage(ChatMessage::Ptr chatMsg, MessageMetadata const& metadata);
-    void insertChatlines(QList<ChatLine::Ptr> chatLines);
     void updateMuteMicButton();
     void updateMuteVolButton();
     void retranslateUi();
@@ -142,8 +107,6 @@ private:
     void startCounter();
     void stopCounter(bool error = false);
     void updateCallButtons();
-    void SendMessageStr(QString msg);
-    bool loadHistory(const QString& phrase, const ParameterSearch& parameter);
 
 protected:
     GenericNetCamView* createNetcam() final override;
@@ -161,13 +124,7 @@ private:
     QTimer* callDurationTimer;
     QTimer typingTimer;
     QElapsedTimer timeElapsed;
-    OfflineMsgEngine* offlineEngine;
-    QAction* loadHistoryAction;
     QAction* copyStatusAction;
-    QAction* exportChatAction;
-
-    History* history;
-    QHash<uint, FileTransferInstance*> ftransWidgets;
     bool isTyping;
     bool lastCallIsVideo;
 };

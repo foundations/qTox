@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -30,6 +30,7 @@ public:
     explicit ContentLayout(QWidget* parent);
     ~ContentLayout();
 
+    void reloadTheme();
     void clear();
 
     QFrame mainHLine;

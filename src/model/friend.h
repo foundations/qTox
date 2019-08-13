@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -23,6 +23,8 @@
 #include "contact.h"
 #include "src/core/core.h"
 #include "src/core/toxid.h"
+#include "src/core/contactid.h"
+#include "src/model/status.h"
 #include <QObject>
 #include <QString>
 
@@ -30,7 +32,7 @@ class Friend : public Contact
 {
     Q_OBJECT
 public:
-    Friend(uint32_t friendId, const ToxPk& friendPk, const QString& userAlias);
+    Friend(uint32_t friendId, const ToxPk& friendPk, const QString& userAlias = {}, const QString &userName = {});
     Friend(const Friend& other) = delete;
     Friend& operator=(const Friend& other) = delete;
 
@@ -38,7 +40,7 @@ public:
     void setAlias(const QString& name);
     QString getDisplayedName() const override;
     bool hasAlias() const;
-
+    QString getUserName() const;
     void setStatusMessage(const QString& message);
     QString getStatusMessage() const;
 
@@ -47,15 +49,19 @@ public:
 
     const ToxPk& getPublicKey() const;
     uint32_t getId() const override;
+    const ContactId& getPersistentId() const override;
 
-    void setStatus(Status s);
-    Status getStatus() const;
+    void setStatus(Status::Status s);
+    Status::Status getStatus() const;
+    bool isOnline() const;
+
+    bool useHistory() const override final;
 
 signals:
-    void nameChanged(uint32_t friendId, const QString& name);
-    void aliasChanged(uint32_t friendId, QString alias);
-    void statusChanged(uint32_t friendId, Status status);
-    void statusMessageChanged(uint32_t friendId, const QString& message);
+    void nameChanged(const ToxPk& friendId, const QString& name);
+    void aliasChanged(const ToxPk& friendId, QString alias);
+    void statusChanged(const ToxPk& friendId, Status::Status status);
+    void statusMessageChanged(const ToxPk& friendId, const QString& message);
     void loadChatHistory();
 
 public slots:
@@ -67,7 +73,7 @@ private:
     ToxPk friendPk;
     uint32_t friendId;
     bool hasNewEvents;
-    Status friendStatus;
+    Status::Status friendStatus;
 };
 
 #endif // FRIEND_H

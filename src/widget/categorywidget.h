@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,6 +22,7 @@
 
 #include "genericchatitemwidget.h"
 #include "src/core/core.h"
+#include "src/model/status.h"
 
 class FriendListLayout;
 class FriendListWidget;
@@ -39,8 +40,8 @@ public:
     void setExpanded(bool isExpanded, bool save = true);
     void setName(const QString& name, bool save = true);
 
-    void addFriendWidget(FriendWidget* w, Status s);
-    void removeFriendWidget(FriendWidget* w, Status s);
+    void addFriendWidget(FriendWidget* w, Status::Status s);
+    void removeFriendWidget(FriendWidget* w, Status::Status s);
     void updateStatus();
 
     bool hasChatrooms() const;

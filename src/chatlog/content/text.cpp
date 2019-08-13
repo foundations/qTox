@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -31,18 +31,16 @@
 #include <QTextBlock>
 #include <QTextFragment>
 
-#include "src/widget/style.h"
-
-static const QString COLOR_HIGHLIGHT = QStringLiteral("#ff7626");
-
 Text::Text(const QString& txt, const QFont& font, bool enableElide, const QString& rwText,
-           const QColor c)
+           const TextType& type, const QColor& custom)
     : rawText(rwText)
     , elide(enableElide)
     , defFont(font)
-    , defStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatArea/innerStyle.css"), font))
-    , color(c)
+    , defStyleSheet(Style::getStylesheet(QStringLiteral("chatArea/innerStyle.css"), font))
+    , textType(type)
+    , customColor(custom)
 {
+    color = textColor();
     setText(txt);
     setAcceptedMouseButtons(Qt::LeftButton);
     setAcceptHoverEvents(true);
@@ -68,9 +66,11 @@ void Text::selectText(const QString& txt, const std::pair<int, int>& point)
         return;
     }
 
-    auto cursor = doc->find(txt, point.first);
+    selectCursor = doc->find(txt, point.first);
+    selectPoint = point;
 
-    selectText(cursor, point);
+    regenerate();
+    update();
 }
 
 void Text::selectText(const QRegularExpression &exp, const std::pair<int, int>& point)
@@ -81,14 +81,20 @@ void Text::selectText(const QRegularExpression &exp, const std::pair<int, int>& 
         return;
     }
 
-    auto cursor = doc->find(exp, point.first);
+    selectCursor = doc->find(exp, point.first);
+    selectPoint = point;
 
-    selectText(cursor, point);
+    regenerate();
+    update();
 }
 
 void Text::deselectText()
 {
     dirty = true;
+
+    selectCursor = QTextCursor();
+    selectPoint = {0, 0};
+
     regenerate();
     update();
 }
@@ -230,9 +236,10 @@ void Text::paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWid
         sel.cursor.setPosition(getSelectionEnd(), QTextCursor::KeepAnchor);
     }
 
-    const QColor selectionColor = QColor::fromRgbF(0.23, 0.68, 0.91);
+    const QColor selectionColor = Style::getColor(Style::SelectText);
     sel.format.setBackground(selectionColor.lighter(selectionHasFocus ? 100 : 160));
     sel.format.setForeground(selectionHasFocus ? Qt::white : Qt::black);
+
     ctx.selections.append(sel);
     ctx.palette.setColor(QPalette::Text, color);
 
@@ -244,6 +251,15 @@ void Text::visibilityChanged(bool visible)
 {
     keepInMemory = visible;
 
+    regenerate();
+    update();
+}
+
+void Text::reloadTheme()
+{
+    defStyleSheet = Style::getStylesheet(QStringLiteral("chatArea/innerStyle.css"), defFont);
+    color = textColor();
+    dirty = true;
     regenerate();
     update();
 }
@@ -345,6 +361,10 @@ void Text::regenerate()
         size = idealSize();
 
         dirty = false;
+    }
+
+    if (!selectCursor.isNull()) {
+        selectText(selectCursor, selectPoint);
     }
 
     // if we are not visible -> free mem
@@ -452,10 +472,19 @@ void Text::selectText(QTextCursor& cursor, const std::pair<int, int>& point)
         cursor.endEditBlock();
 
         QTextCharFormat format;
-        format.setBackground(QBrush(QColor(COLOR_HIGHLIGHT)));
+        format.setBackground(QBrush(Style::getColor(Style::SearchHighlighted)));
         cursor.mergeCharFormat(format);
-
-        regenerate();
-        update();
     }
+}
+
+QColor Text::textColor() const
+{
+    QColor c = Style::getColor(Style::MainText);
+    if (textType == ACTION) {
+        c = Style::getColor(Style::Action);
+    } else if (textType == CUSTOM) {
+        c = customColor;
+    }
+
+    return c;
 }

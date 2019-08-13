@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -20,6 +20,7 @@
 #ifndef CONTACT_H
 #define CONTACT_H
 
+#include "src/core/contactid.h"
 #include <QObject>
 #include <QString>
 
@@ -32,9 +33,11 @@ public:
     virtual void setName(const QString& name) = 0;
     virtual QString getDisplayedName() const = 0;
     virtual uint32_t getId() const = 0;
-
+    virtual const ContactId& getPersistentId() const = 0;
     virtual void setEventFlag(bool flag) = 0;
     virtual bool getEventFlag() const = 0;
+
+    virtual bool useHistory() const = 0; // TODO: remove after added history in group chat
 
 signals:
     void displayedNameChanged(const QString& newName);

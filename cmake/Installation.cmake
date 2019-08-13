@@ -1,3 +1,19 @@
+#   Copyright © 2019 by The qTox Project Contributors
+#
+#   This file is part of qTox, a Qt-based graphical interface for Tox.
+#   qTox is libre software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   qTox is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with qTox.  If not, see <http://www.gnu.org/licenses/>
+
 ################################################################################
 #
 # :: Installation
@@ -46,10 +62,17 @@ else()
     install(FILES ${path_from} DESTINATION ${path_to})
   endforeach(size)
 
+  # process the icon, compress if enabled
   set(SVG_SRC "${CMAKE_SOURCE_DIR}/img/icons/qtox.svg")
-  set(SVG_GZIP "${CMAKE_BINARY_DIR}/qtox.svgz")
-  install(CODE "
-  execute_process(COMMAND gzip -S z INPUT_FILE ${SVG_SRC} OUTPUT_FILE ${SVG_GZIP})
-  " COMPONENT Runtime)
-  install(FILES "${SVG_GZIP}" DESTINATION "share/icons/hicolor/scalable/apps")
+  if(${SVGZ_ICON})
+    set(SVG_GZIP "${CMAKE_BINARY_DIR}/qtox.svgz")
+    install(CODE "
+    execute_process(COMMAND gzip -S z INPUT_FILE ${SVG_SRC} OUTPUT_FILE ${SVG_GZIP})
+    " COMPONENT Runtime)
+    set(SVG_DEST "${SVG_GZIP}")
+  else()
+    set(SVG_DEST "${SVG_SRC}")
+  endif()
+  install(FILES "${SVG_DEST}" DESTINATION "share/icons/hicolor/scalable/apps")
+
 endif()

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -28,21 +28,23 @@ template <class A, class B>
 class QHash;
 class Friend;
 class QByteArray;
+class QString;
 class ToxPk;
 
 class FriendList
 {
 public:
     static Friend* addFriend(uint32_t friendId, const ToxPk& friendPk);
-    static Friend* findFriend(uint32_t friendId);
     static Friend* findFriend(const ToxPk& friendPk);
+    static const ToxPk& id2Key(uint32_t friendId);
     static QList<Friend*> getAllFriends();
-    static void removeFriend(uint32_t friendId, bool fake = false);
+    static void removeFriend(const ToxPk& friendPk, bool fake = false);
     static void clear();
+    static QString decideNickname(const ToxPk& friendPk, const QString& origName);
 
 private:
-    static QHash<uint32_t, Friend*> friendList;
-    static QHash<QByteArray, uint32_t> key2id;
+    static QHash<ToxPk, Friend*> friendList;
+    static QHash<uint32_t, ToxPk> id2key;
 };
 
 #endif // FRIENDLIST_H

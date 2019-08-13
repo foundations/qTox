@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -23,8 +23,12 @@
 
 #include <QObject>
 
+#include "src/audio/iaudiocontrol.h"
+
 class Widget;
 class Profile;
+class Settings;
+class LoginScreen;
 class Core;
 
 #ifdef Q_OS_MAC
@@ -42,20 +46,13 @@ class Nexus : public QObject
 public:
     void start();
     void showMainGUI();
-    void quit();
-    bool isRunning();
-
+    void setSettings(Settings* settings);
     static Nexus& getInstance();
     static void destroyInstance();
     static Core* getCore();
     static Profile* getProfile();
-    static void setProfile(Profile* profile);
     static Widget* getDesktopGUI();
-    static QString getSupportedImageFilter();
-    static bool tryRemoveFile(const QString& filepath);
 
-public slots:
-    void showLogin();
 
 #ifdef Q_OS_MAC
 public:
@@ -80,18 +77,31 @@ public slots:
 private:
     void updateWindowsArg(QWindow* closedWindow);
 
-    QSignalMapper* windowMapper;
     QActionGroup* windowActions = nullptr;
 #endif
+signals:
+    void currentProfileChanged(Profile* Profile);
+    void profileLoaded();
+    void profileLoadFailed();
+    void saveGlobal();
+
+public slots:
+    void onCreateNewProfile(const QString& name, const QString& pass);
+    void onLoadProfile(const QString& name, const QString& pass);
+    int showLogin(const QString& profileName = QString());
+    void bootstrapWithProfile(Profile *p);
 
 private:
     explicit Nexus(QObject* parent = nullptr);
+    void connectLoginScreen(const LoginScreen& loginScreen);
+    void setProfile(Profile* p);
     ~Nexus();
 
 private:
     Profile* profile;
+    Settings* settings;
     Widget* widget;
-    bool running;
+    std::unique_ptr<IAudioControl> audioControl;
 };
 
 #endif // NEXUS_H

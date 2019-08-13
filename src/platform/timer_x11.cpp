@@ -1,4 +1,6 @@
 /*
+    Copyright © 2019 by The qTox Project Contributors
+
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
     qTox is libre software: you can redistribute it and/or modify
@@ -16,7 +18,6 @@
 */
 
 #include <QtCore/qsystemdetection.h>
-#if defined(Q_OS_UNIX) && !defined(__APPLE__) && !defined(__MACH__)
 #include "src/platform/timer.h"
 #include "src/platform/x11_display.h"
 #include <QDebug>
@@ -47,5 +48,3 @@ uint32_t Platform::getIdleTime()
     X11Display::unlock();
     return idleTime;
 }
-
-#endif // Q_OS_UNIX

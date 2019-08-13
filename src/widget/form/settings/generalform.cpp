@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -25,14 +25,12 @@
 
 #include "src/core/core.h"
 #include "src/core/coreav.h"
-#include "src/core/recursivesignalblocker.h"
-#include "src/net/autoupdate.h"
-#include "src/nexus.h"
 #include "src/persistence/profile.h"
 #include "src/persistence/settings.h"
 #include "src/persistence/smileypack.h"
 #include "src/widget/form/settingswidget.h"
 #include "src/widget/style.h"
+#include "src/widget/tool/recursivesignalblocker.h"
 #include "src/widget/translator.h"
 #include "src/widget/widget.h"
 
@@ -66,6 +64,7 @@ static QStringList locales = {
     "pr",
     "pl",
     "pt",
+    "pt_BR",
     "ro",
     "ru",
     "sk",
@@ -101,9 +100,7 @@ GeneralForm::GeneralForm(SettingsWidget* myParent)
 
     Settings& s = Settings::getInstance();
 
-#ifdef AUTOUPDATE_ENABLED
-    bodyUI->checkUpdates->setVisible(AUTOUPDATE_ENABLED);
-#else
+#ifndef UPDATE_CHECK_ENABLED
     bodyUI->checkUpdates->setVisible(false);
 #endif
 
@@ -122,6 +119,8 @@ GeneralForm::GeneralForm(SettingsWidget* myParent)
             langName = QLatin1String("Lojban");
         else if (locales[i].startsWith(QLatin1String("pr")))
             langName = QLatin1String("Pirate");
+        else if (locales[i] == (QLatin1String("pt"))) // QTBUG-47891
+            langName = QStringLiteral("português");
         else
             langName = QLocale(locales[i]).nativeLanguageName();
 
@@ -145,7 +144,6 @@ GeneralForm::GeneralForm(SettingsWidget* myParent)
     bodyUI->closeToTray->setEnabled(showSystemTray);
 
     bodyUI->statusChanges->setChecked(s.getStatusChangeNotificationEnabled());
-    bodyUI->cbFauxOfflineMessaging->setChecked(s.getFauxOfflineMessaging());
 
     bodyUI->autoAwaySpinBox->setValue(s.getAutoAwayTime());
     bodyUI->autoSaveFilesDir->setText(s.getGlobalAutoAcceptDir());
@@ -204,7 +202,7 @@ void GeneralForm::on_closeToTray_stateChanged()
 void GeneralForm::on_lightTrayIcon_stateChanged()
 {
     Settings::getInstance().setLightTrayIcon(bodyUI->lightTrayIcon->isChecked());
-    Widget::getInstance()->updateIcons();
+    emit updateIcons();
 }
 
 void GeneralForm::on_minimizeToTray_stateChanged()
@@ -215,11 +213,6 @@ void GeneralForm::on_minimizeToTray_stateChanged()
 void GeneralForm::on_statusChanges_stateChanged()
 {
     Settings::getInstance().setStatusChangeNotificationEnabled(bodyUI->statusChanges->isChecked());
-}
-
-void GeneralForm::on_cbFauxOfflineMessaging_stateChanged()
-{
-    Settings::getInstance().setFauxOfflineMessaging(bodyUI->cbFauxOfflineMessaging->isChecked());
 }
 
 void GeneralForm::on_autoAwaySpinBox_editingFinished()

@@ -1,10 +1,10 @@
 /*
-    Copyright (C) 2013 by Maxim Biro <nurupo.contributions@gmail.com>
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2013 by Maxim Biro <nurupo.contributions@gmail.com>
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
-    This program is free software: you can redistribute it and/or modify
+    qTox is libre software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
@@ -109,17 +109,7 @@ void Settings::loadGlobal()
 
     createSettingsDir();
 
-    QString localSettingsPath = qApp->applicationDirPath() + QDir::separator() + globalSettingsFile;
-
-    if (QFile(localSettingsPath).exists()) {
-        QSettings ps(localSettingsPath, QSettings::IniFormat);
-        ps.setIniCodec("UTF-8");
-        ps.beginGroup("Advanced");
-        makeToxPortable = ps.value("makeToxPortable", false).toBool();
-        ps.endGroup();
-    } else {
-        makeToxPortable = false;
-    }
+    makeToxPortable = Settings::isToxPortable();
 
     QDir dir(getSettingsDirPath());
     QString filePath = dir.filePath(globalSettingsFile);
@@ -141,28 +131,6 @@ void Settings::loadGlobal()
     }
     s.endGroup();
 
-    s.beginGroup("DHT Server");
-    {
-        if (s.value("useCustomList").toBool()) {
-            useCustomDhtList = true;
-            qDebug() << "Using custom bootstrap nodes list";
-            int serverListSize = s.beginReadArray("dhtServerList");
-            for (int i = 0; i < serverListSize; i++) {
-                s.setArrayIndex(i);
-                DhtServer server;
-                server.name = s.value("name").toString();
-                server.userId = s.value("userId").toString();
-                server.address = s.value("address").toString();
-                server.port = static_cast<quint16>(s.value("port").toUInt());
-                dhtServerList << server;
-            }
-            s.endArray();
-        } else {
-            useCustomDhtList = false;
-        }
-    }
-    s.endGroup();
-
     s.beginGroup("General");
     {
         translation = s.value("translation", "en").toString();
@@ -175,9 +143,11 @@ void Settings::loadGlobal()
         }
         autoAwayTime = s.value("autoAwayTime", 10).toInt();
         checkUpdates = s.value("checkUpdates", true).toBool();
-        notifySound = s.value("notifySound", true).toBool(); // note: notifySound and busySound UI elements are now under UI settings
-        busySound = s.value("busySound", false).toBool();    // page, but kept under General in settings file to be backwards compatible
-        fauxOfflineMessaging = s.value("fauxOfflineMessaging", true).toBool();
+        // note: notifySound and busySound UI elements are now under UI settings
+        // page, but kept under General in settings file to be backwards compatible
+        notifySound = s.value("notifySound", true).toBool();
+        notifyHide = s.value("notifyHide", false).toBool();
+        busySound = s.value("busySound", false).toBool();
         autoSaveEnabled = s.value("autoSaveEnabled", false).toBool();
         globalAutoAcceptDir = s.value("globalAutoAcceptDir",
                                       QStandardPaths::locate(QStandardPaths::HomeLocation, QString(),
@@ -210,6 +180,7 @@ void Settings::loadGlobal()
     {
         showWindow = s.value("showWindow", true).toBool();
         notify = s.value("notify", true).toBool();
+        desktopNotify = s.value("desktopNotify", true).toBool();
         groupAlwaysNotify = s.value("groupAlwaysNotify", true).toBool();
         groupchatPosition = s.value("groupchatPosition", true).toBool();
         separateWindow = s.value("separateWindow", false).toBool();
@@ -242,6 +213,7 @@ void Settings::loadGlobal()
             else
                 style = "None";
         }
+        nameColors = s.value("nameColors", false).toBool();
     }
     s.endGroup();
 
@@ -290,39 +262,37 @@ void Settings::loadGlobal()
     }
     s.endGroup();
 
-    // Read the embedded DHT bootstrap nodes list if needed
-    if (dhtServerList.isEmpty()) {
-        QSettings rcs(":/conf/settings.ini", QSettings::IniFormat);
-        rcs.setIniCodec("UTF-8");
-        rcs.beginGroup("DHT Server");
-        int serverListSize = rcs.beginReadArray("dhtServerList");
-        for (int i = 0; i < serverListSize; i++) {
-            rcs.setArrayIndex(i);
-            DhtServer server;
-            server.name = rcs.value("name").toString();
-            server.userId = rcs.value("userId").toString();
-            server.address = rcs.value("address").toString();
-            server.port = static_cast<quint16>(rcs.value("port").toUInt());
-            dhtServerList << server;
-        }
-        rcs.endArray();
-        rcs.endGroup();
-    }
-
     loaded = true;
 }
 
-void Settings::loadPersonal()
+bool Settings::isToxPortable()
 {
-    Profile* profile = Nexus::getProfile();
-    if (!profile) {
-        qCritical() << "No active profile, couldn't load personal settings";
-        return;
+    QString localSettingsPath = qApp->applicationDirPath() + QDir::separator() + globalSettingsFile;
+    if (!QFile(localSettingsPath).exists()) {
+        return false;
     }
-    loadPersonal(profile);
+    QSettings ps(localSettingsPath, QSettings::IniFormat);
+    ps.setIniCodec("UTF-8");
+    ps.beginGroup("Advanced");
+    bool result = ps.value("makeToxPortable", false).toBool();
+    ps.endGroup();
+    return result;
 }
 
-void Settings::loadPersonal(Profile* profile)
+void Settings::updateProfileData(Profile* profile)
+{
+    QMutexLocker locker{&bigLock};
+
+    if (profile == nullptr) {
+        qWarning() << QString("Could not load new settings (profile change to nullptr)");
+        return;
+    }
+    setCurrentProfile(profile->getName());
+    saveGlobal();
+    loadPersonal(profile->getName(), profile->getPasskey());
+}
+
+void Settings::loadPersonal(QString profileName, const ToxEncrypt* passKey)
 {
     QMutexLocker locker{&bigLock};
 
@@ -330,13 +300,13 @@ void Settings::loadPersonal(Profile* profile)
     QString filePath = dir.filePath(globalSettingsFile);
 
     // load from a profile specific friend data list if possible
-    QString tmp = dir.filePath(profile->getName() + ".ini");
+    QString tmp = dir.filePath(profileName + ".ini");
     if (QFile(tmp).exists()) // otherwise, filePath remains the global file
         filePath = tmp;
 
     qDebug() << "Loading personal settings from" << filePath;
 
-    SettingsSerializer ps(filePath, profile->getPasskey());
+    SettingsSerializer ps(filePath, passKey);
     ps.load();
     friendLst.clear();
 
@@ -354,8 +324,7 @@ void Settings::loadPersonal(Profile* profile)
         friendLst.reserve(size);
         for (int i = 0; i < size; i++) {
             ps.setArrayIndex(i);
-            friendProp fp;
-            fp.addr = ps.value("addr").toString();
+            friendProp fp{ps.value("addr").toString()};
             fp.alias = ps.value("alias").toString();
             fp.note = ps.value("note").toString();
             fp.autoAcceptDir = ps.value("autoAcceptDir").toString();
@@ -369,8 +338,8 @@ void Settings::loadPersonal(Profile* profile)
             fp.circleID = ps.value("circle", -1).toInt();
 
             if (getEnableLogging())
-                fp.activity = ps.value("activity", QDate()).toDate();
-            friendLst[ToxId(fp.addr).getPublicKey().getKey()] = fp;
+                fp.activity = ps.value("activity", QDateTime()).toDateTime();
+            friendLst.insert(ToxId(fp.addr).getPublicKey().getByteArray(), fp);
         }
         ps.endArray();
     }
@@ -396,12 +365,15 @@ void Settings::loadPersonal(Profile* profile)
     ps.beginGroup("GUI");
     {
         compactLayout = ps.value("compactLayout", true).toBool();
+        sortingMode = static_cast<FriendListSortingMode>(
+            ps.value("friendSortingMethod", static_cast<int>(FriendListSortingMode::Name)).toInt());
     }
     ps.endGroup();
 
     ps.beginGroup("Proxy");
     {
         proxyType = static_cast<ProxyType>(ps.value("proxyType", 0 /* ProxyType::None */).toInt());
+        proxyType = fixInvalidProxyType(proxyType);
         proxyAddr = ps.value("proxyAddr", proxyAddr).toString();
         proxyPort = static_cast<quint16>(ps.value("proxyPort", proxyPort).toUInt());
     }
@@ -473,21 +445,6 @@ void Settings::saveGlobal()
     }
     s.endGroup();
 
-    s.beginGroup("DHT Server");
-    {
-        s.setValue("useCustomList", useCustomDhtList);
-        s.beginWriteArray("dhtServerList", dhtServerList.size());
-        for (int i = 0; i < dhtServerList.size(); i++) {
-            s.setArrayIndex(i);
-            s.setValue("name", dhtServerList[i].name);
-            s.setValue("userId", dhtServerList[i].userId);
-            s.setValue("address", dhtServerList[i].address);
-            s.setValue("port", dhtServerList[i].port);
-        }
-        s.endArray();
-    }
-    s.endGroup();
-
     s.beginGroup("General");
     {
         s.setValue("translation", translation);
@@ -498,8 +455,8 @@ void Settings::saveGlobal()
         s.setValue("autoAwayTime", autoAwayTime);
         s.setValue("checkUpdates", checkUpdates);
         s.setValue("notifySound", notifySound);
+        s.setValue("notifyHide", notifyHide);
         s.setValue("busySound", busySound);
-        s.setValue("fauxOfflineMessaging", fauxOfflineMessaging);
         s.setValue("autoSaveEnabled", autoSaveEnabled);
         s.setValue("autoAcceptMaxSize", static_cast<qlonglong>(autoAcceptMaxSize));
         s.setValue("globalAutoAcceptDir", globalAutoAcceptDir);
@@ -529,6 +486,7 @@ void Settings::saveGlobal()
     {
         s.setValue("showWindow", showWindow);
         s.setValue("notify", notify);
+        s.setValue("desktopNotify", desktopNotify);
         s.setValue("groupAlwaysNotify", groupAlwaysNotify);
         s.setValue("separateWindow", separateWindow);
         s.setValue("dontGroupWindows", dontGroupWindows);
@@ -547,6 +505,7 @@ void Settings::saveGlobal()
         s.setValue("useEmoticons", useEmoticons);
         s.setValue("themeColor", themeColor);
         s.setValue("style", style);
+        s.setValue("nameColors", nameColors);
         s.setValue("statusChangeNotificationEnabled", statusChangeNotificationEnabled);
         s.setValue("spellCheckingEnabled", spellCheckingEnabled);
     }
@@ -672,6 +631,7 @@ void Settings::savePersonal(QString profileName, const ToxEncrypt* passkey)
     ps.beginGroup("GUI");
     {
         ps.setValue("compactLayout", compactLayout);
+        ps.setValue("friendSortingMethod", static_cast<int>(sortingMode));
     }
     ps.endGroup();
 
@@ -811,21 +771,6 @@ QString Settings::getAppCacheDirPath() const
 #endif
 }
 
-const QList<DhtServer>& Settings::getDhtServerList() const
-{
-    QMutexLocker locker{&bigLock};
-    return dhtServerList;
-}
-
-void Settings::setDhtServerList(const QList<DhtServer>& servers)
-{
-    QMutexLocker locker{&bigLock};
-
-    if (servers != dhtServerList) {
-        dhtServerList = servers;
-        emit dhtServerListChanged(dhtServerList);
-    }
-}
 bool Settings::getEnableTestSound() const
 {
     QMutexLocker locker{&bigLock};
@@ -1080,6 +1025,22 @@ void Settings::setNotifySound(bool newValue)
     }
 }
 
+bool Settings::getNotifyHide() const
+{
+    QMutexLocker locker{&bigLock};
+    return notifyHide;
+}
+
+void Settings::setNotifyHide(bool newValue)
+{
+    QMutexLocker locker{&bigLock};
+
+    if (newValue != notifyHide) {
+        notifyHide = newValue;
+        emit notifyHideChanged(notifyHide);
+    }
+}
+
 bool Settings::getBusySound() const
 {
     QMutexLocker locker{&bigLock};
@@ -1249,6 +1210,8 @@ void Settings::setEnableLanDiscovery(bool enabled)
 
 QNetworkProxy Settings::getProxy() const
 {
+    QMutexLocker locker{&bigLock};
+
     QNetworkProxy proxy;
     switch (Settings::getProxyType()) {
     case ProxyType::ptNone:
@@ -1338,7 +1301,7 @@ void Settings::setCurrentProfile(const QString& profile)
     if (profile != currentProfile) {
         currentProfile = profile;
         currentProfileId = makeProfileId(currentProfile);
-        emit currentProfileChanged(currentProfile);
+
         emit currentProfileIdChanged(currentProfileId);
     }
 }
@@ -1387,7 +1350,7 @@ QString Settings::getAutoAcceptDir(const ToxPk& id) const
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->autoAcceptDir;
 
@@ -1398,15 +1361,10 @@ void Settings::setAutoAcceptDir(const ToxPk& id, const QString& dir)
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
-    if (it == friendLst.end()) {
-        updateFriendAddress(id.toString());
-        setAutoAcceptDir(id, dir);
-        return;
-    }
+    auto& frnd = getOrInsertFriendPropRef(id);
 
-    if (it->autoAcceptDir != dir) {
-        it->autoAcceptDir = dir;
+    if (frnd.autoAcceptDir != dir) {
+        frnd.autoAcceptDir = dir;
         emit autoAcceptDirChanged(id, dir);
     }
 }
@@ -1415,7 +1373,7 @@ Settings::AutoAcceptCallFlags Settings::getAutoAcceptCall(const ToxPk& id) const
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->autoAcceptCall;
 
@@ -1426,15 +1384,10 @@ void Settings::setAutoAcceptCall(const ToxPk& id, AutoAcceptCallFlags accept)
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
-    if (it == friendLst.end()) {
-        updateFriendAddress(id.toString());
-        setAutoAcceptCall(id, accept);
-        return;
-    }
+    auto& frnd = getOrInsertFriendPropRef(id);
 
-    if (it->autoAcceptCall != accept) {
-        it->autoAcceptCall = accept;
+    if (frnd.autoAcceptCall != accept) {
+        frnd.autoAcceptCall = accept;
         emit autoAcceptCallChanged(id, accept);
     }
 }
@@ -1443,7 +1396,7 @@ bool Settings::getAutoGroupInvite(const ToxPk& id) const
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end()) {
         return it->autoGroupInvite;
     }
@@ -1455,15 +1408,10 @@ void Settings::setAutoGroupInvite(const ToxPk& id, bool accept)
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
-    if (it == friendLst.end()) {
-        updateFriendAddress(id.toString());
-        setAutoGroupInvite(id, accept);
-        return;
-    }
+    auto& frnd = getOrInsertFriendPropRef(id);
 
-    if (it->autoGroupInvite != accept) {
-        it->autoGroupInvite = accept;
+    if (frnd.autoGroupInvite != accept) {
+        frnd.autoGroupInvite = accept;
         emit autoGroupInviteChanged(id, accept);
     }
 }
@@ -1472,7 +1420,7 @@ QString Settings::getContactNote(const ToxPk& id) const
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->note;
 
@@ -1483,15 +1431,10 @@ void Settings::setContactNote(const ToxPk& id, const QString& note)
 {
     QMutexLocker locker{&bigLock};
 
-    auto it = friendLst.find(id.getKey());
-    if (it == friendLst.end()) {
-        updateFriendAddress(id.toString());
-        setContactNote(id, note);
-        return;
-    }
+    auto& frnd = getOrInsertFriendPropRef(id);
 
-    if (it->note != note) {
-        it->note = note;
+    if (frnd.note != note) {
+        frnd.note = note;
         emit contactNoteChanged(id, note);
     }
 }
@@ -1716,6 +1659,22 @@ void Settings::setShowWindow(bool newValue)
     if (newValue != showWindow) {
         showWindow = newValue;
         emit showWindowChanged(showWindow);
+    }
+}
+
+bool Settings::getDesktopNotify() const
+{
+    QMutexLocker locker{&bigLock};
+    return desktopNotify;
+}
+
+void Settings::setDesktopNotify(bool enabled)
+{
+    QMutexLocker locker{&bigLock};
+
+    if (enabled != desktopNotify) {
+        desktopNotify = enabled;
+        emit desktopNotifyChanged(desktopNotify);
     }
 }
 
@@ -2059,7 +2018,7 @@ QString Settings::getFriendAddress(const QString& publicKey) const
 {
     QMutexLocker locker{&bigLock};
     // TODO: using ToxId here is a hack
-    QByteArray key = ToxId(publicKey).getPublicKey().getKey();
+    QByteArray key = ToxId(publicKey).getPublicKey().getByteArray();
     auto it = friendLst.find(key);
     if (it != friendLst.end())
         return it->addr;
@@ -2071,24 +2030,15 @@ void Settings::updateFriendAddress(const QString& newAddr)
 {
     QMutexLocker locker{&bigLock};
     // TODO: using ToxId here is a hack
-    QByteArray key = ToxId(newAddr).getPublicKey().getKey();
-    auto it = friendLst.find(key);
-    if (it != friendLst.end()) {
-        it->addr = newAddr;
-    } else {
-        friendProp fp;
-        fp.addr = newAddr;
-        fp.alias = "";
-        fp.note = "";
-        fp.autoAcceptDir = "";
-        friendLst[key] = fp;
-    }
+    auto key = ToxId(newAddr).getPublicKey();
+    auto& frnd = getOrInsertFriendPropRef(key);
+    frnd.addr = newAddr;
 }
 
 QString Settings::getFriendAlias(const ToxPk& id) const
 {
     QMutexLocker locker{&bigLock};
-    auto it = friendLst.find(id.getKey());
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->alias;
 
@@ -2098,22 +2048,14 @@ QString Settings::getFriendAlias(const ToxPk& id) const
 void Settings::setFriendAlias(const ToxPk& id, const QString& alias)
 {
     QMutexLocker locker{&bigLock};
-    auto it = friendLst.find(id.getKey());
-    if (it != friendLst.end()) {
-        it->alias = alias;
-    } else {
-        friendProp fp;
-        fp.addr = id.toString();
-        fp.alias = alias;
-        fp.note = "";
-        fp.autoAcceptDir = "";
-        friendLst[id.getKey()] = fp;
-    }
+    auto& frnd = getOrInsertFriendPropRef(id);
+    frnd.alias = alias;
 }
 
 int Settings::getFriendCircleID(const ToxPk& id) const
 {
-    auto it = friendLst.find(id.getKey());
+    QMutexLocker locker{&bigLock};
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->circleID;
 
@@ -2122,44 +2064,26 @@ int Settings::getFriendCircleID(const ToxPk& id) const
 
 void Settings::setFriendCircleID(const ToxPk& id, int circleID)
 {
-    auto it = friendLst.find(id.getKey());
-    if (it != friendLst.end()) {
-        it->circleID = circleID;
-    } else {
-        friendProp fp;
-        fp.addr = id.toString();
-        fp.alias = "";
-        fp.note = "";
-        fp.autoAcceptDir = "";
-        fp.circleID = circleID;
-        friendLst[id.getKey()] = fp;
-    }
+    QMutexLocker locker{&bigLock};
+    auto& frnd = getOrInsertFriendPropRef(id);
+    frnd.circleID = circleID;
 }
 
-QDate Settings::getFriendActivity(const ToxPk& id) const
+QDateTime Settings::getFriendActivity(const ToxPk& id) const
 {
-    auto it = friendLst.find(id.getKey());
+    QMutexLocker locker{&bigLock};
+    auto it = friendLst.find(id.getByteArray());
     if (it != friendLst.end())
         return it->activity;
 
-    return QDate();
+    return QDateTime();
 }
 
-void Settings::setFriendActivity(const ToxPk& id, const QDate& activity)
+void Settings::setFriendActivity(const ToxPk& id, const QDateTime& activity)
 {
-    auto it = friendLst.find(id.getKey());
-    if (it != friendLst.end()) {
-        it->activity = activity;
-    } else {
-        friendProp fp;
-        fp.addr = id.toString();
-        fp.alias = "";
-        fp.note = "";
-        fp.autoAcceptDir = "";
-        fp.circleID = -1;
-        fp.activity = activity;
-        friendLst[id.getKey()] = fp;
-    }
+    QMutexLocker locker{&bigLock};
+    auto& frnd = getOrInsertFriendPropRef(id);
+    frnd.activity = activity;
 }
 
 void Settings::saveFriendSettings(const ToxPk& id)
@@ -2171,23 +2095,7 @@ void Settings::saveFriendSettings(const ToxPk& id)
 void Settings::removeFriendSettings(const ToxPk& id)
 {
     QMutexLocker locker{&bigLock};
-    friendLst.remove(id.getKey());
-}
-
-bool Settings::getFauxOfflineMessaging() const
-{
-    QMutexLocker locker{&bigLock};
-    return fauxOfflineMessaging;
-}
-
-void Settings::setFauxOfflineMessaging(bool value)
-{
-    QMutexLocker locker{&bigLock};
-
-    if (value != fauxOfflineMessaging) {
-        fauxOfflineMessaging = value;
-        emit fauxOfflineMessagingChanged(fauxOfflineMessaging);
-    }
+    friendLst.remove(id.getByteArray());
 }
 
 bool Settings::getCompactLayout() const
@@ -2203,6 +2111,22 @@ void Settings::setCompactLayout(bool value)
     if (value != compactLayout) {
         compactLayout = value;
         emit compactLayoutChanged(value);
+    }
+}
+
+Settings::FriendListSortingMode Settings::getFriendSortingMode() const
+{
+    QMutexLocker locker{&bigLock};
+    return sortingMode;
+}
+
+void Settings::setFriendSortingMode(FriendListSortingMode mode)
+{
+    QMutexLocker locker{&bigLock};
+
+    if (mode != sortingMode) {
+        sortingMode = mode;
+        emit sortingModeChanged(sortingMode);
     }
 }
 
@@ -2272,22 +2196,27 @@ void Settings::setShowIdenticons(bool value)
 
 int Settings::getCircleCount() const
 {
+    QMutexLocker locker{&bigLock};
     return circleLst.size();
 }
 
 QString Settings::getCircleName(int id) const
 {
+    QMutexLocker locker{&bigLock};
     return circleLst[id].name;
 }
 
 void Settings::setCircleName(int id, const QString& name)
 {
+    QMutexLocker locker{&bigLock};
     circleLst[id].name = name;
     savePersonal();
 }
 
 int Settings::addCircle(const QString& name)
 {
+    QMutexLocker locker{&bigLock};
+
     circleProp cp;
     cp.expanded = false;
 
@@ -2303,11 +2232,13 @@ int Settings::addCircle(const QString& name)
 
 bool Settings::getCircleExpanded(int id) const
 {
+    QMutexLocker locker{&bigLock};
     return circleLst[id].expanded;
 }
 
 void Settings::setCircleExpanded(int id, bool expanded)
 {
+    QMutexLocker locker{&bigLock};
     circleLst[id].expanded = expanded;
 }
 
@@ -2417,14 +2348,30 @@ void Settings::setAutoLogin(bool state)
     }
 }
 
+void Settings::setEnableGroupChatsColor(bool state)
+{
+    QMutexLocker locker{&bigLock};
+    if (state != nameColors) {
+        nameColors = state;
+        emit nameColorsChanged(nameColors);
+    }
+}
+
+bool Settings::getEnableGroupChatsColor() const
+{
+    return nameColors;
+}
+
 /**
  * @brief Write a default personal .ini settings file for a profile.
  * @param basename Filename without extension to save settings.
  *
  * @note If basename is "profile", settings will be saved in profile.ini
  */
-void Settings::createPersonal(QString basename)
+void Settings::createPersonal(const QString& basename) const
 {
+    QMutexLocker locker{&bigLock};
+
     QString path = getSettingsDirPath() + QDir::separator() + basename + ".ini";
     qDebug() << "Creating new profile settings in " << path;
 
@@ -2444,6 +2391,8 @@ void Settings::createPersonal(QString basename)
  */
 void Settings::createSettingsDir()
 {
+    QMutexLocker locker{&bigLock};
+
     QString dir = Settings::getSettingsDirPath();
     QDir directory(dir);
     if (!directory.exists() && !directory.mkpath(directory.absolutePath()))
@@ -2462,4 +2411,30 @@ void Settings::sync()
 
     QMutexLocker locker{&bigLock};
     qApp->processEvents();
+}
+
+Settings::friendProp& Settings::getOrInsertFriendPropRef(const ToxPk& id)
+{
+    // No mutex lock, this is a private fn that should only be called by other
+    // public functions that already locked the mutex
+    auto it = friendLst.find(id.getByteArray());
+    if (it == friendLst.end()) {
+        it = friendLst.insert(id.getByteArray(), friendProp{id.toString()});
+    }
+
+    return *it;
+}
+
+ICoreSettings::ProxyType Settings::fixInvalidProxyType(ICoreSettings::ProxyType proxyType)
+{
+    // Repair uninitialized enum that was saved to settings due to bug (https://github.com/qTox/qTox/issues/5311)
+    switch (proxyType) {
+    case ICoreSettings::ProxyType::ptNone:
+    case ICoreSettings::ProxyType::ptSOCKS5:
+    case ICoreSettings::ProxyType::ptHTTP:
+        return proxyType;
+    default:
+        qWarning() << "Repairing invalid ProxyType, UDP will be enabled";
+        return ICoreSettings::ProxyType::ptNone;
+    }
 }

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -29,11 +29,12 @@
 
 #include "src/core/core.h"
 #include "src/core/coreav.h"
-#include "src/core/recursivesignalblocker.h"
 #include "src/nexus.h"
+#include "src/model/status.h"
 #include "src/persistence/profile.h"
 #include "src/persistence/settings.h"
 #include "src/widget/gui.h"
+#include "src/widget/tool/recursivesignalblocker.h"
 #include "src/widget/translator.h"
 
 /**
@@ -157,9 +158,8 @@ void AdvancedForm::on_btnCopyDebug_clicked()
 void AdvancedForm::on_resetButton_clicked()
 {
     const QString titile = tr("Reset settings");
-    bool result =
-        GUI::askQuestion(titile, tr("All settings will be reset to default. Are you sure?"),
-                         tr("Yes"), tr("No"));
+    bool result = GUI::askQuestion(titile, tr("All settings will be reset to default. Are you sure?"),
+                                   tr("Yes"), tr("No"));
 
     if (!result)
         return;
@@ -223,7 +223,7 @@ void AdvancedForm::on_reconnectButton_clicked()
         return;
     }
 
-    emit Core::getInstance()->statusSet(Status::Offline);
+    emit Core::getInstance()->statusSet(Status::Status::Offline);
     Nexus::getProfile()->restartCore();
 }
 

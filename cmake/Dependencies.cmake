@@ -1,3 +1,19 @@
+#   Copyright © 2019 by The qTox Project Contributors
+#
+#   This file is part of qTox, a Qt-based graphical interface for Tox.
+#   qTox is libre software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   qTox is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with qTox.  If not, see <http://www.gnu.org/licenses/>
+
 ################################################################################
 #
 # :: Dependencies
@@ -199,14 +215,6 @@ add_definitions(
   -DGIT_VERSION="${GIT_VERSION}"
 )
 
-if (NOT TIMESTAMP)
-  execute_process(
-    COMMAND date +%s
-    OUTPUT_VARIABLE TIMESTAMP
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-endif()
-
 set(APPLE_EXT False)
 if (FOUNDATION_FOUND AND IOKIT_FOUND)
   set(APPLE_EXT True)
@@ -229,7 +237,12 @@ if (PLATFORM_EXTENSIONS)
   endif()
 endif()
 
+if (${DESKTOP_NOTIFICATIONS})
+    # snorenotify does only provide a cmake find module
+    find_package(LibsnoreQt5 0.7.0 REQUIRED)
+    set(ALL_LIBRARIES ${ALL_LIBRARIES} Snore::Libsnore)
+endif()
+
 add_definitions(
-  -DTIMESTAMP=${TIMESTAMP}
   -DLOG_TO_FILE=1
 )

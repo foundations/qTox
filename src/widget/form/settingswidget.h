@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -30,17 +30,20 @@
 class Camera;
 class GenericForm;
 class GeneralForm;
+class IAudioControl;
 class PrivacyForm;
 class AVForm;
 class QLabel;
 class QTabWidget;
 class ContentLayout;
+class UpdateCheck;
+class Widget;
 
 class SettingsWidget : public QWidget
 {
     Q_OBJECT
 public:
-    explicit SettingsWidget(QWidget* parent = nullptr);
+    SettingsWidget(UpdateCheck* updateCheck, IAudioControl& audio, Widget* parent = nullptr);
     ~SettingsWidget();
 
     bool isShown() const;
@@ -48,6 +51,9 @@ public:
     void setBodyHeadStyle(QString style);
 
     void showAbout();
+
+public slots:
+    void onUpdateAvailable(void);
 
 private slots:
     void onTabChanged(int);

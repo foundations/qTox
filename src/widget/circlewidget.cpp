@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -33,8 +33,8 @@
 #include "widget.h"
 #include "tool/croppinglabel.h"
 
-#include "src/model/friend.h"
 #include "src/friendlist.h"
+#include "src/model/friend.h"
 #include "src/persistence/settings.h"
 #include "src/widget/form/chatform.h"
 
@@ -113,8 +113,8 @@ void CircleWidget::contextMenuEvent(QContextMenuEvent* event)
 
             circleList.remove(replacedCircle);
         } else if (selectedItem == openAction) {
-            ContentDialog* dialog = Widget::getInstance()->createContentDialog();
-
+            ContentDialog* dialog = new ContentDialog();
+            emit newContentDialog(*dialog);
             for (int i = 0; i < friendOnlineLayout()->count(); ++i) {
                 QWidget* const widget = friendOnlineLayout()->itemAt(i)->widget();
                 FriendWidget* const friendWidget = qobject_cast<FriendWidget*>(widget);
@@ -142,8 +142,11 @@ void CircleWidget::contextMenuEvent(QContextMenuEvent* event)
 
 void CircleWidget::dragEnterEvent(QDragEnterEvent* event)
 {
-    ToxId toxId(event->mimeData()->text());
-    Friend* f = FriendList::findFriend(toxId.getPublicKey());
+    if (!event->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    ToxPk toxPk(event->mimeData()->data("toxPk"));
+    Friend* f = FriendList::findFriend(toxPk);
     if (f != nullptr)
         event->acceptProposedAction();
 
@@ -165,14 +168,17 @@ void CircleWidget::dropEvent(QDropEvent* event)
     if (!widget)
         return;
 
+    if (!event->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
     // Check, that the user has a friend with the same ToxId
-    ToxId toxId(event->mimeData()->text());
-    Friend* f = FriendList::findFriend(toxId.getPublicKey());
+    ToxPk toxPk{event->mimeData()->data("toxPk")};
+    Friend* f = FriendList::findFriend(toxPk);
     if (!f)
         return;
 
     // Save CircleWidget before changing the Id
-    int circleId = Settings::getInstance().getFriendCircleID(toxId.getPublicKey());
+    int circleId = Settings::getInstance().getFriendCircleID(toxPk);
     CircleWidget* circleWidget = getFromID(circleId);
 
     addFriendWidget(widget, f->getStatus());
@@ -180,7 +186,7 @@ void CircleWidget::dropEvent(QDropEvent* event)
 
     if (circleWidget != nullptr) {
         circleWidget->updateStatus();
-        Widget::getInstance()->searchCircle(circleWidget);
+        emit searchCircle(*circleWidget);
     }
 
     setContainerAttribute(Qt::WA_UnderMouse, false);

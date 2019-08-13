@@ -1,5 +1,5 @@
 /*
-    Copyright © 2016-2018 by The qTox Project Contributors
+    Copyright © 2016-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,7 +18,6 @@
 */
 
 #include <QtCore/qsystemdetection.h>
-#ifdef Q_OS_WIN32
 #include "src/platform/capslock.h"
 #include <windows.h>
 
@@ -26,5 +25,3 @@ bool Platform::capsLockEnabled()
 {
     return GetKeyState(VK_CAPITAL) == 1;
 }
-
-#endif // Q_OS_WIN32

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -19,8 +19,10 @@
 
 
 #include "callconfirmwidget.h"
+#include "src/widget/style.h"
 #include "src/widget/widget.h"
 #include <QDialogButtonBox>
+#include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPaintEvent>
@@ -29,7 +31,6 @@
 #include <QPushButton>
 #include <QRect>
 #include <QVBoxLayout>
-#include <QFontMetrics>
 #include <assert.h>
 
 /**
@@ -75,12 +76,12 @@ CallConfirmWidget::CallConfirmWidget(const QWidget* anchor)
     // Note: At the moment this may not work properly. For languages written
     // from right to left, there is no translation for the phrase "Incoming call...".
     // In this situation, the phrase "Incoming call..." looks as "...oming call..."
-    Qt::TextElideMode elideMode = (QGuiApplication::layoutDirection() == Qt::LeftToRight)
-                                  ? Qt::ElideRight : Qt::ElideLeft;
+    Qt::TextElideMode elideMode =
+        (QGuiApplication::layoutDirection() == Qt::LeftToRight) ? Qt::ElideRight : Qt::ElideLeft;
     int marginSize = 12;
     QFontMetrics fontMetrics(callLabel->font());
-    QString elidedText = fontMetrics.elidedText(callLabel->text(), elideMode,
-                                                rectW - marginSize * 2 - 4);
+    QString elidedText =
+        fontMetrics.elidedText(callLabel->text(), elideMode, rectW - marginSize * 2 - 4);
     callLabel->setText(elidedText);
 
     QDialogButtonBox* buttonBox = new QDialogButtonBox(Qt::Horizontal, this);
@@ -89,8 +90,8 @@ CallConfirmWidget::CallConfirmWidget(const QWidget* anchor)
     reject->setFlat(true);
     accept->setStyleSheet("QPushButton{border:none;}");
     reject->setStyleSheet("QPushButton{border:none;}");
-    accept->setIcon(QIcon(":/ui/acceptCall/acceptCall.svg"));
-    reject->setIcon(QIcon(":/ui/rejectCall/rejectCall.svg"));
+    accept->setIcon(QIcon(Style::getImagePath("acceptCall/acceptCall.svg")));
+    reject->setIcon(QIcon(Style::getImagePath("rejectCall/rejectCall.svg")));
     accept->setIconSize(accept->size());
     reject->setIconSize(reject->size());
 
@@ -147,20 +148,17 @@ void CallConfirmWidget::paintEvent(QPaintEvent*)
     painter.setBrush(brush);
     painter.setPen(Qt::NoPen);
 
-    painter.drawRoundRect(mainRect, roundedFactor * rectRatio, roundedFactor);
+    painter.drawRoundedRect(mainRect, roundedFactor * rectRatio, roundedFactor, Qt::RelativeSize);
     painter.drawPolygon(spikePoly);
 }
 
 void CallConfirmWidget::showEvent(QShowEvent*)
 {
+    // Kriby: Legacy comment, is this still true?
     // If someone does show() from Widget or lower, the event will reach us
     // because it's our parent, and we could show up in the wrong form.
     // So check here if our friend's form is actually the active one.
-    // if (!Widget::getInstance()->isFriendWidgetCurActiveWidget(&f))
-    {
-        // QWidget::hide();
-        // return;
-    }
+
     reposition();
     update();
 }

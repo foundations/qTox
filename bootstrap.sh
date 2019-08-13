@@ -1,5 +1,22 @@
 #!/usr/bin/env bash
 
+#   Copyright © 2019 by The qTox Project Contributors
+#
+#   This file is part of qTox, a Qt-based graphical interface for Tox.
+#   qTox is libre software: you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation, either version 3 of the License, or
+#   (at your option) any later version.
+#
+#   qTox is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with qTox.  If not, see <http://www.gnu.org/licenses/>
+
+
 # This script's purpose is to ease compiling qTox for users.
 #
 # NO AUTOMATED BUILDS SHOULD DEPEND ON IT.
@@ -31,7 +48,7 @@ readonly INSTALL_DIR=libs
 readonly BASE_DIR="${SCRIPT_DIR}/${INSTALL_DIR}"
 
 # versions of libs to checkout
-readonly TOXCORE_VERSION="v0.2.7"
+readonly TOXCORE_VERSION="v0.2.10"
 readonly SQLCIPHER_VERSION="v3.4.2"
 
 # directory names of cloned repositories

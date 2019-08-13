@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,8 +18,6 @@
 */
 
 #include "openal2.h"
-#include "src/core/core.h"
-#include "src/core/coreav.h"
 #include "src/persistence/settings.h"
 
 #include <QDebug>
@@ -32,7 +30,8 @@
 
 #include <cassert>
 
-extern "C" {
+extern "C"
+{
 #include <filter_audio.h>
 }
 
@@ -80,8 +79,7 @@ OpenAL2::OpenAL2()
     , alProxyContext{nullptr}
     , alProxySource{0}
     , alProxyBuffer{0}
-{
-}
+{}
 
 bool OpenAL2::initInput(const QString& deviceName)
 {
@@ -161,7 +159,7 @@ bool OpenAL2::initOutputEchoCancel()
                       ALC_FORMAT_TYPE_SOFT,
                       ALC_SHORT_SOFT,
                       ALC_FREQUENCY,
-                      Audio::AUDIO_SAMPLE_RATE,
+                      IAudioControl::AUDIO_SAMPLE_RATE,
                       0}; // End of List
 
     alProxyDev = alcLoopbackOpenDeviceSOFT(nullptr);
@@ -205,7 +203,7 @@ bool OpenAL2::initOutputEchoCancel()
  */
 bool OpenAL2::initOutput(const QString& deviceName)
 {
-    peerSources.clear();
+    assert(sinks.empty());
 
     outputInitialized = false;
     if (!Settings::getInstance().getAudioOutDevEnabled()) {
@@ -243,18 +241,9 @@ bool OpenAL2::initOutput(const QString& deviceName)
         alProxyContext = alOutContext;
     }
 
-    alGenSources(1, &alMainSource);
-    checkAlError();
-
     // init master volume
     alListenerf(AL_GAIN, Settings::getInstance().getOutVolume() * 0.01f);
     checkAlError();
-
-    Core* core = Core::getInstance();
-    if (core) {
-        // reset each call's audio source
-        core->getAv()->invalidateCallSources();
-    }
 
     // ensure alProxyContext is active
     alcMakeContextCurrent(alProxyContext);
@@ -333,7 +322,8 @@ void OpenAL2::doOutput()
         alcMakeContextCurrent(alOutContext);
     }
 
-    alBufferData(bufids[0], AL_FORMAT_MONO16, outBuf, AUDIO_FRAME_SAMPLE_COUNT_PER_CHANNEL * 2, AUDIO_SAMPLE_RATE);
+    alBufferData(bufids[0], AL_FORMAT_MONO16, outBuf, AUDIO_FRAME_SAMPLE_COUNT_PER_CHANNEL * 2,
+                 AUDIO_SAMPLE_RATE);
 
     alSourceQueueBuffers(alProxySource, 1, bufids);
 

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -34,7 +34,7 @@
 EmoticonsWidget::EmoticonsWidget(QWidget* parent)
     : QMenu(parent)
 {
-    setStyleSheet(Style::getStylesheet(":/ui/emoticonWidget/emoticonWidget.css"));
+    setStyleSheet(Style::getStylesheet("emoticonWidget/emoticonWidget.css"));
     setLayout(&layout);
     layout.addWidget(&stack);
 

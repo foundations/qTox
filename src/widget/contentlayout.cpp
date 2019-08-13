@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -66,6 +66,14 @@ ContentLayout::~ContentLayout()
     mainContent->deleteLater();
 }
 
+void ContentLayout::reloadTheme()
+{
+#ifndef Q_OS_MAC
+    mainHead->setStyleSheet(Style::getStylesheet("settings/mainHead.css"));
+    mainContent->setStyleSheet(Style::getStylesheet("window/general.css"));
+#endif
+}
+
 void ContentLayout::clear()
 {
     QLayoutItem* item;
@@ -110,11 +118,9 @@ void ContentLayout::init()
         mainContent->setStyle(QStyleFactory::create(Settings::getInstance().getStyle()));
     }
 
-#ifndef Q_OS_MAC
-    mainHead->setStyleSheet(Style::getStylesheet(":ui/settings/mainHead.css"));
-    mainContent->setStyleSheet(Style::getStylesheet(":ui/settings/mainContent.css"));
-#endif
+    reloadTheme();
 
+    mainHLineLayout.addSpacing(4);
     mainHLineLayout.addWidget(&mainHLine);
     mainHLineLayout.addSpacing(5);
 

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,26 +18,30 @@
 */
 
 #include "grouplist.h"
+#include "src/core/core.h"
 #include "src/model/group.h"
 #include <QDebug>
 #include <QHash>
 
-QHash<int, Group*> GroupList::groupList;
-
-Group* GroupList::addGroup(int groupId, const QString& name, bool isAvGroupchat,
+QHash<const GroupId, Group*> GroupList::groupList;
+QHash<uint32_t, GroupId> GroupList::id2key;
+Group* GroupList::addGroup(int groupNum, const GroupId& groupId, const QString& name, bool isAvGroupchat,
                            const QString& selfName)
 {
     auto checker = groupList.find(groupId);
     if (checker != groupList.end())
         qWarning() << "addGroup: groupId already taken";
 
-    Group* newGroup = new Group(groupId, name, isAvGroupchat, selfName);
+    // TODO: Core instance is bad but grouplist is also an instance so we can
+    // deal with this later
+    auto core = Core::getInstance();
+    Group* newGroup = new Group(groupNum, groupId, name, isAvGroupchat, selfName, *core, *core);
     groupList[groupId] = newGroup;
-
+    id2key[groupNum] = groupId;
     return newGroup;
 }
 
-Group* GroupList::findGroup(int groupId)
+Group* GroupList::findGroup(const GroupId& groupId)
 {
     auto g_it = groupList.find(groupId);
     if (g_it != groupList.end())
@@ -46,7 +50,12 @@ Group* GroupList::findGroup(int groupId)
     return nullptr;
 }
 
-void GroupList::removeGroup(int groupId, bool /*fake*/)
+const GroupId& GroupList::id2Key(uint32_t groupNum)
+{
+    return id2key[groupNum];
+}
+
+void GroupList::removeGroup(const GroupId& groupId, bool /*fake*/)
 {
     auto g_it = groupList.find(groupId);
     if (g_it != groupList.end()) {

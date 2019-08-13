@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -21,49 +21,54 @@
 #define OFFLINEMSGENGINE_H
 
 #include "src/chatlog/chatmessage.h"
+#include "src/core/core.h"
+#include "src/model/message.h"
+#include "src/persistence/db/rawdatabase.h"
 #include <QDateTime>
 #include <QMap>
 #include <QMutex>
 #include <QObject>
 #include <QSet>
+#include <chrono>
 
 class Friend;
+class ICoreFriendMessageSender;
 
 class OfflineMsgEngine : public QObject
 {
     Q_OBJECT
 public:
-    explicit OfflineMsgEngine(Friend*);
-    virtual ~OfflineMsgEngine() = default;
+    explicit OfflineMsgEngine(Friend* f, ICoreFriendMessageSender* messageSender);
 
-    void dischargeReceipt(int receipt);
-    void registerReceipt(int receipt, int64_t messageID, ChatMessage::Ptr msg);
+    using CompletionFn = std::function<void()>;
+    void addUnsentMessage(Message const& message, CompletionFn completionCallback);
+    void addSentMessage(ReceiptNum receipt, Message const& message, CompletionFn completionCallback);
     void deliverOfflineMsgs();
 
 public slots:
-    void removeAllReceipts();
-    void updateTimestamp(int receiptId);
+    void removeAllMessages();
+    void onReceiptReceived(ReceiptNum receipt);
 
 private:
-    void processReceipt(int receiptId);
-    struct Receipt
+    struct OfflineMessage
     {
-        bool bRowValid{false};
-        int64_t rowId{0};
-        bool bRecepitReceived{false};
+        Message message;
+        std::chrono::time_point<std::chrono::steady_clock> authorshipTime;
+        CompletionFn completionFn;
     };
 
-    struct MsgPtr
-    {
-        ChatMessage::Ptr msg;
-        int receipt;
-    };
+private slots:
+    void completeMessage(QMap<ReceiptNum, OfflineMessage>::iterator msgIt);
+
+private:
+    void checkForCompleteMessages(ReceiptNum receipt);
+
     QMutex mutex;
-    Friend* f;
-    QHash<int, Receipt> receipts;
-    QMap<int64_t, MsgPtr> undeliveredMsgs;
-
-    static const int offlineTimeout;
+    const Friend* f;
+    ICoreFriendMessageSender* messageSender;
+    QVector<ReceiptNum> receivedReceipts;
+    QMap<ReceiptNum, OfflineMessage> sentMessages;
+    QVector<OfflineMessage> unsentMessages;
 };
 
 #endif // OFFLINEMSGENGINE_H

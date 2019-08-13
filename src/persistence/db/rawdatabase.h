@@ -1,3 +1,22 @@
+/*
+    Copyright © 2014-2019 by The qTox Project Contributors
+
+    This file is part of qTox, a Qt-based graphical interface for Tox.
+
+    qTox is libre software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    qTox is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with qTox.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #ifndef RAWDATABASE_H
 #define RAWDATABASE_H
 
@@ -13,6 +32,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include "src/util/strongtype.h"
 
 /// The two following defines are required to use SQLCipher
 /// They are used by the sqlite3.h header
@@ -21,6 +41,8 @@
 
 #include <sqlite3.h>
 
+using RowId = NamedType<int64_t, struct RowIdTag, Orderable>;
+Q_DECLARE_METATYPE(RowId);
 
 class RawDatabase : QObject
 {
@@ -31,13 +53,13 @@ public:
     {
     public:
         Query(QString query, QVector<QByteArray> blobs = {},
-              const std::function<void(int64_t)>& insertCallback = {})
+              const std::function<void(RowId)>& insertCallback = {})
             : query{query.toUtf8()}
             , blobs{blobs}
             , insertCallback{insertCallback}
         {
         }
-        Query(QString query, const std::function<void(int64_t)>& insertCallback)
+        Query(QString query, const std::function<void(RowId)>& insertCallback)
             : query{query.toUtf8()}
             , insertCallback{insertCallback}
         {
@@ -52,7 +74,7 @@ public:
     private:
         QByteArray query;
         QVector<QByteArray> blobs;
-        std::function<void(int64_t)> insertCallback;
+        std::function<void(RowId)> insertCallback;
         std::function<void(const QVector<QVariant>&)> rowCallback;
         QVector<sqlite3_stmt*> statements;
 
@@ -86,6 +108,15 @@ protected slots:
 
 private:
     QString anonymizeQuery(const QByteArray& query);
+    bool openEncryptedDatabaseAtLatestVersion(const QString& hexKey);
+    bool updateSavedCipherParameters(const QString& hexKey);
+    bool setCipherParameters(int majorVersion, const QString& database = {});
+    bool setKey(const QString& hexKey);
+    int getUserVersion();
+    bool encryptDatabase(const QString& newHexKey);
+    bool decryptDatabase();
+    bool commitDbSwap(const QString& hexKey);
+    bool testUsable();
 
 protected:
     static QString deriveKey(const QString& password, const QByteArray& salt);

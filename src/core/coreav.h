@@ -1,6 +1,6 @@
 /*
-    Copyright (C) 2013 by Maxim Biro <nurupo.contributions@gmail.com>
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2013 by Maxim Biro <nurupo.contributions@gmail.com>
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -25,18 +25,18 @@
 #include <QObject>
 #include <atomic>
 #include <memory>
-#include <tox/tox.h> // for TOX_VERSION_IS_API_COMPATIBLE macro
 #include <tox/toxav.h>
 
 class Friend;
 class Group;
+class IAudioControl;
 class QThread;
 class QTimer;
 class CoreVideoSource;
 class CameraSource;
 class VideoSource;
 class VideoFrame;
-class CoreAV;
+class Core;
 struct vpx_image;
 
 class CoreAV : public QObject
@@ -44,10 +44,13 @@ class CoreAV : public QObject
     Q_OBJECT
 
 public:
-    explicit CoreAV(Tox* tox);
-    ~CoreAV();
+    using CoreAVPtr = std::unique_ptr<CoreAV>;
+    static CoreAVPtr makeCoreAV(Tox* core);
 
-    const ToxAV* getToxAv() const;
+    void setAudio(IAudioControl& newAudio);
+    IAudioControl* getAudio();
+
+    ~CoreAV();
 
     bool anyActiveCalls() const;
     bool isCallStarted(const Friend* f) const;
@@ -62,7 +65,6 @@ public:
                             uint32_t rate) const;
 
     VideoSource* getVideoSourceFromCall(int callNumber) const;
-    void invalidateCallSources();
     void sendNoVideo();
 
     void joinGroupCall(int groupNum);
@@ -71,22 +73,15 @@ public:
     void muteCallOutput(const Group* g, bool mute);
     bool isGroupCallInputMuted(const Group* g) const;
     bool isGroupCallOutputMuted(const Group* g) const;
-    bool isGroupAvEnabled(int groupNum) const;
 
     bool isCallInputMuted(const Friend* f) const;
     bool isCallOutputMuted(const Friend* f) const;
     void toggleMuteCallInput(const Friend* f);
     void toggleMuteCallOutput(const Friend* f);
-#if TOX_VERSION_IS_API_COMPATIBLE(0, 2, 0)
     static void groupCallCallback(void* tox, uint32_t group, uint32_t peer, const int16_t* data,
                                   unsigned samples, uint8_t channels, uint32_t sample_rate,
                                   void* core);
-#else
-    static void groupCallCallback(void* tox, int group, int peer, const int16_t* data, unsigned samples,
-                                  uint8_t channels, unsigned sample_rate, void* core);
-#endif
-    static void invalidateGroupCallPeerSource(int group, int peer);
-    static void invalidateGroupCallSources(int group);
+    void invalidateGroupCallPeerSource(int group, ToxPk peerPk);
 
 public slots:
     bool startCall(uint32_t friendNum, bool video);
@@ -109,6 +104,17 @@ private slots:
     static void videoBitrateCallback(ToxAV* toxAV, uint32_t friendNum, uint32_t rate, void* self);
 
 private:
+    struct ToxAVDeleter
+    {
+        void operator()(ToxAV* tox)
+        {
+            toxav_kill(tox);
+        }
+    };
+
+    explicit CoreAV(std::unique_ptr<ToxAV, ToxAVDeleter> tox);
+    void connectCallbacks(ToxAV& toxav);
+
     void process();
     static void audioFrameCallback(ToxAV* toxAV, uint32_t friendNum, const int16_t* pcm,
                                    size_t sampleCount, uint8_t channels, uint32_t samplingRate,
@@ -121,14 +127,16 @@ private:
     static constexpr uint32_t VIDEO_DEFAULT_BITRATE = 2500;
 
 private:
-    ToxAV* toxav;
+    // atomic because potentially accessed by different threads
+    std::atomic<IAudioControl*> audio;
+    std::unique_ptr<ToxAV, ToxAVDeleter> toxav;
     std::unique_ptr<QThread> coreavThread;
     QTimer* iterateTimer = nullptr;
-    static std::map<uint32_t, ToxFriendCall> calls;
-    static std::map<int, ToxGroupCall> groupCalls;
+    using ToxFriendCallPtr = std::unique_ptr<ToxFriendCall>;
+    static std::map<uint32_t, ToxFriendCallPtr> calls;
+    using ToxGroupCallPtr = std::unique_ptr<ToxGroupCall>;
+    static std::map<int, ToxGroupCallPtr> groupCalls;
     std::atomic_flag threadSwitchLock;
-
-    friend class Audio;
 };
 
 #endif // COREAV_H

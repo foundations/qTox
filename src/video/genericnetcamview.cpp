@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -20,6 +20,7 @@
 #include "genericnetcamview.h"
 
 #include <QApplication>
+#include <QScreen>
 #include <QBoxLayout>
 #include <QDesktopWidget>
 #include <QKeyEvent>
@@ -32,7 +33,7 @@ const auto BTN_STATE_NONE = QVariant("none");
 const auto BTN_STATE_RED = QVariant("red");
 const int BTN_PANEL_HEIGHT = 55;
 const int BTN_PANEL_WIDTH = 250;
-const auto BTN_STYLE_SHEET_PATH = QStringLiteral(":/ui/chatForm/fullScreenButtons.css");
+const auto BTN_STYLE_SHEET_PATH = QStringLiteral("chatForm/fullScreenButtons.css");
 }
 
 GenericNetCamView::GenericNetCamView(QWidget* parent)
@@ -117,7 +118,7 @@ void GenericNetCamView::setShowMessages(bool show, bool notify)
     toggleMessagesButton->setText(tr("Show Messages"));
 
     if (notify) {
-        toggleMessagesButton->setIcon(QIcon(":/ui/chatArea/info.svg"));
+        toggleMessagesButton->setIcon(QIcon(Style::getImagePath("chatArea/info.svg")));
     }
 }
 
@@ -136,8 +137,11 @@ void GenericNetCamView::enterFullScreen()
     showFullScreen();
     enterFullScreenButton->hide();
     toggleMessagesButton->hide();
-
-    const auto screenSize = QApplication::desktop()->screenGeometry(this);
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 10, 0))
+    const auto screenSize = QGuiApplication::screenAt(this->pos())->geometry();
+#else
+    const QRect screenSize = QApplication::desktop()->screenGeometry(this);
+#endif
     buttonPanel->setGeometry((screenSize.width() / 2) - buttonPanel->width() / 2,
             screenSize.height() - BTN_PANEL_HEIGHT - 25, BTN_PANEL_WIDTH, BTN_PANEL_HEIGHT);
     buttonPanel->show();

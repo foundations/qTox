@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -28,18 +28,21 @@
 #include "ui_avform.h"
 #include "src/video/videomode.h"
 
-class Audio;
+#include <memory>
+
+class IAudioControl;
+class IAudioSettings;
+class IAudioSink;
+class IAudioSource;
 class CameraSource;
 class CoreAV;
-class IAudioSettings;
 class IVideoSettings;
 class VideoSurface;
-
 class AVForm : public GenericForm, private Ui::AVForm
 {
     Q_OBJECT
 public:
-    AVForm(Audio* audio, CoreAV* coreAV, CameraSource& camera,
+    AVForm(IAudioControl& audio, CoreAV* coreAV, CameraSource& camera,
            IAudioSettings* audioSettings, IVideoSettings* videoSettings);
     ~AVForm() override;
     QString getFormName() final override
@@ -92,14 +95,17 @@ private:
     void open(const QString& devName, const VideoMode& mode);
     int getStepsFromValue(qreal val, qreal valMin, qreal valMax);
     qreal getValueFromSteps(int steps, qreal valMin, qreal valMax);
+    void trackNewScreenGeometry(QScreen* qScreen);
 
 private:
-    Audio* audio;
+    IAudioControl& audio;
     CoreAV* coreAV;
     IAudioSettings* audioSettings;
     IVideoSettings* videoSettings;
 
     bool subscribedToAudioIn;
+    std::unique_ptr<IAudioSink> audioSink = nullptr;
+    std::unique_ptr<IAudioSource> audioSrc = nullptr;
     VideoSurface* camVideoSurface;
     CameraSource& camera;
     QVector<QPair<QString, QString>> videoDeviceList;

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -72,6 +72,8 @@ public:
     void setAvatar(const QPixmap& img);
     QSize getAvatarSize() const;
 
+    void reloadTheme();
+
     // TODO: Remove
     void addWidget(QWidget* widget, int stretch = 0, Qt::Alignment alignment = Qt::Alignment());
     void addLayout(QLayout* layout);
@@ -89,7 +91,6 @@ signals:
     void callRejected();
 
 private slots:
-    void onNameChanged(const QString& name);
     void retranslateUi();
     void updateButtonsView();
 

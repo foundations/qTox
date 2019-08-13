@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,7 +18,6 @@
 */
 
 #include <QApplication>
-#ifdef Q_OS_WIN32
 #include "src/persistence/settings.h"
 #include "src/platform/autorun.h"
 #include <string>
@@ -101,5 +100,3 @@ bool Platform::getAutorun()
     RegCloseKey(key);
     return result;
 }
-
-#endif // Q_OS_WIN32

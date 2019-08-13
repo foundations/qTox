@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -36,8 +36,7 @@ CroppingLabel::CroppingLabel(QWidget* parent)
     public:
         explicit LineEdit(QWidget* parent = nullptr)
             : QLineEdit(parent)
-        {
-        }
+        {}
 
     protected:
         void keyPressEvent(QKeyEvent* event) override
@@ -85,6 +84,12 @@ void CroppingLabel::setText(const QString& text)
     setElidedText();
 }
 
+void CroppingLabel::setPlaceholderText(const QString& text)
+{
+    textEdit->setPlaceholderText(text);
+    setElidedText();
+}
+
 void CroppingLabel::resizeEvent(QResizeEvent* ev)
 {
     setElidedText();
@@ -100,7 +105,11 @@ QSize CroppingLabel::sizeHint() const
 
 QSize CroppingLabel::minimumSizeHint() const
 {
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 11, 0))
+    return QSize(fontMetrics().horizontalAdvance("..."), QLabel::minimumSizeHint().height());
+#else
     return QSize(fontMetrics().width("..."), QLabel::minimumSizeHint().height());
+#endif
 }
 
 void CroppingLabel::mouseReleaseEvent(QMouseEvent* e)
@@ -129,8 +138,12 @@ void CroppingLabel::setElidedText()
         setToolTip(Qt::convertFromPlainText(origText, Qt::WhiteSpaceNormal));
     else
         setToolTip(QString());
-
-    QLabel::setText(elidedText);
+    if (!elidedText.isEmpty()) {
+        QLabel::setText(elidedText);
+    } else {
+        // NOTE: it would be nice if the label had custom styling when it was default
+        QLabel::setText(textEdit->placeholderText());
+    }
 }
 
 void CroppingLabel::hideTextEdit()
@@ -161,7 +174,11 @@ void CroppingLabel::minimizeMaximumWidth()
 {
     // This function chooses the smallest possible maximum width.
     // Text width + padding. Without padding, we'll have elipses.
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 11, 0))
+    setMaximumWidth(fontMetrics().horizontalAdvance(origText) + fontMetrics().horizontalAdvance("..."));
+#else
     setMaximumWidth(fontMetrics().width(origText) + fontMetrics().width("..."));
+#endif
 }
 
 void CroppingLabel::editingFinished()

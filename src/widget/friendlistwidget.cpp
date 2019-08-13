@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -26,7 +26,10 @@
 #include "src/friendlist.h"
 #include "src/model/friend.h"
 #include "src/model/group.h"
+#include "src/model/status.h"
 #include "src/persistence/settings.h"
+#include "src/widget/categorywidget.h"
+
 #include <QDragEnterEvent>
 #include <QDragLeaveEvent>
 #include <QGridLayout>
@@ -51,9 +54,9 @@ enum class Time
 
 static const int LAST_TIME = static_cast<int>(Time::Never);
 
-Time getTime(const QDate& date)
+Time getTimeBucket(const QDateTime& date)
 {
-    if (date == QDate()) {
+    if (date == QDateTime()) {
         return Time::Never;
     }
 
@@ -73,7 +76,7 @@ Time getTime(const QDate& date)
     // clang-format on
 
     for (Time time : dates.keys()) {
-        if (dates[time] <= date) {
+        if (dates[time] <= date.date()) {
             return time;
         }
     }
@@ -81,7 +84,7 @@ Time getTime(const QDate& date)
     return Time::LongAgo;
 }
 
-QDate getDateFriend(const Friend* contact)
+QDateTime getActiveTimeFriend(const Friend* contact)
 {
     return Settings::getInstance().getFriendActivity(contact->getPublicKey());
 }
@@ -96,9 +99,6 @@ qint64 timeUntilTomorrow()
 
 FriendListWidget::FriendListWidget(Widget* parent, bool groupsOnTop)
     : QWidget(parent)
-    // Prevent Valgrind from complaining. We're changing this to Name here.
-    // Must be Activity for change to take effect.
-    , mode(Activity)
     , groupsOnTop(groupsOnTop)
 {
     listLayout = new FriendListLayout();
@@ -112,7 +112,8 @@ FriendListWidget::FriendListWidget(Widget* parent, bool groupsOnTop)
     listLayout->removeItem(listLayout->getLayoutOnline());
     listLayout->removeItem(listLayout->getLayoutOffline());
 
-    setMode(Name);
+    mode = Settings::getInstance().getFriendSortingMode();
+    sortByMode(mode);
 
     onGroupchatPositionChanged(groupsOnTop);
     dayTimer = new QTimer(this);
@@ -144,14 +145,20 @@ FriendListWidget::~FriendListWidget()
     }
 }
 
-void FriendListWidget::setMode(Mode mode)
+void FriendListWidget::setMode(SortingMode mode)
 {
     if (this->mode == mode)
         return;
 
     this->mode = mode;
+    Settings::getInstance().setFriendSortingMode(mode);
 
-    if (mode == Name) {
+    sortByMode(mode);
+}
+
+void FriendListWidget::sortByMode(SortingMode mode)
+{
+    if (mode == SortingMode::Name) {
         circleLayout = new GenericChatItemLayout;
         circleLayout->getLayout()->setSpacing(0);
         circleLayout->getLayout()->setMargin(0);
@@ -192,7 +199,7 @@ void FriendListWidget::setMode(Mode mode)
         }
 
         reDraw();
-    } else if (mode == Activity) {
+    } else if (mode == SortingMode::Activity) {
         QLocale ql(Settings::getInstance().getTranslation());
         QDate today = QDate::currentDate();
 #define COMMENT "Category for sorting friends by activity"
@@ -223,7 +230,9 @@ void FriendListWidget::setMode(Mode mode)
 
         moveFriends(listLayout->getLayoutOffline());
         moveFriends(listLayout->getLayoutOnline());
-        moveFriends(circleLayout->getLayout());
+        if (circleLayout != nullptr) {
+            moveFriends(circleLayout->getLayout());
+        }
 
         for (int i = 0; i < activityLayout->count(); ++i) {
             QWidget* widget = activityLayout->itemAt(i)->widget();
@@ -254,25 +263,29 @@ void FriendListWidget::setMode(Mode mode)
 
 void FriendListWidget::moveFriends(QLayout* layout)
 {
-    for (int i = 0; i < layout->count(); i++) {
-        QWidget* widget = layout->itemAt(i)->widget();
+    while (!layout->isEmpty()) {
+        QWidget* widget = layout->itemAt(0)->widget();
         FriendWidget* friendWidget = qobject_cast<FriendWidget*>(widget);
         CircleWidget* circleWidget = qobject_cast<CircleWidget*>(widget);
         if (circleWidget) {
             circleWidget->moveFriendWidgets(this);
         } else if (friendWidget) {
             const Friend* contact = friendWidget->getFriend();
-            QDate activityDate = getDateFriend(contact);
-            int time = static_cast<int>(getTime(activityDate));
-
-            QWidget* w = activityLayout->itemAt(time)->widget();
-            CategoryWidget* categoryWidget = qobject_cast<CategoryWidget*>(w);
+            auto* categoryWidget = getTimeCategoryWidget(contact);
             categoryWidget->addFriendWidget(friendWidget, contact->getStatus());
         }
     }
 }
 
-FriendListWidget::Mode FriendListWidget::getMode() const
+CategoryWidget* FriendListWidget::getTimeCategoryWidget(const Friend* frd) const
+{
+    const auto activityTime = getActiveTimeFriend(frd);
+    int timeIndex = static_cast<int>(getTimeBucket(activityTime));
+    QWidget* widget = activityLayout->itemAt(timeIndex)->widget();
+    return qobject_cast<CategoryWidget*>(widget);
+}
+
+FriendListWidget::SortingMode FriendListWidget::getMode() const
 {
     return mode;
 }
@@ -281,15 +294,13 @@ void FriendListWidget::addGroupWidget(GroupWidget* widget)
 {
     groupLayout.addSortedWidget(widget);
     Group* g = widget->getGroup();
-    connect(g, &Group::titleChanged,
-            [=](uint32_t groupId, const QString& author, const QString& name) {
-        Q_UNUSED(groupId);
+    connect(g, &Group::titleChanged, [=](const QString& author, const QString& name) {
         Q_UNUSED(author);
         renameGroupWidget(widget, name);
     });
 }
 
-void FriendListWidget::addFriendWidget(FriendWidget* w, Status s, int circleIndex)
+void FriendListWidget::addFriendWidget(FriendWidget* w, Status::Status s, int circleIndex)
 {
     CircleWidget* circleWidget = CircleWidget::getFromID(circleIndex);
     if (circleWidget == nullptr)
@@ -308,11 +319,9 @@ void FriendListWidget::removeGroupWidget(GroupWidget* w)
 void FriendListWidget::removeFriendWidget(FriendWidget* w)
 {
     const Friend* contact = w->getFriend();
-    if (mode == Activity) {
-        QDate activityDate = getDateFriend(contact);
-        int time = static_cast<int>(getTime(activityDate));
-        QWidget* widget = activityLayout->itemAt(time)->widget();
-        CategoryWidget* categoryWidget = qobject_cast<CategoryWidget*>(widget);
+
+    if (mode == SortingMode::Activity) {
+        auto* categoryWidget = getTimeCategoryWidget(contact);
         categoryWidget->removeFriendWidget(w, contact->getStatus());
         categoryWidget->setVisible(categoryWidget->hasChatrooms());
     } else {
@@ -320,7 +329,7 @@ void FriendListWidget::removeFriendWidget(FriendWidget* w)
         CircleWidget* circleWidget = CircleWidget::getFromID(id);
         if (circleWidget != nullptr) {
             circleWidget->removeFriendWidget(w, contact->getStatus());
-            Widget::getInstance()->searchCircle(circleWidget);
+            emit searchCircle(*circleWidget);
         }
     }
 }
@@ -344,10 +353,10 @@ void FriendListWidget::addCircleWidget(FriendWidget* friendWidget)
             circleWidget->setExpanded(true);
 
             if (circleOriginal != nullptr)
-                Widget::getInstance()->searchCircle(circleOriginal);
+                emit searchCircle(*circleOriginal);
         }
 
-        Widget::getInstance()->searchCircle(circleWidget);
+        emit searchCircle(*circleWidget);
 
         if (window()->isActiveWindow())
             circleWidget->editName();
@@ -400,11 +409,8 @@ void FriendListWidget::onFriendWidgetRenamed(FriendWidget* friendWidget)
 {
     const Friend* contact = friendWidget->getFriend();
     auto status = contact->getStatus();
-    if (mode == Activity) {
-        QDate activityDate = getDateFriend(contact);
-        int time = static_cast<int>(getTime(activityDate));
-        QWidget* widget = activityLayout->itemAt(time)->widget();
-        CategoryWidget* categoryWidget = qobject_cast<CategoryWidget*>(widget);
+    if (mode == SortingMode::Activity) {
+        auto* categoryWidget = getTimeCategoryWidget(contact);
         categoryWidget->removeFriendWidget(friendWidget, status);
         categoryWidget->addFriendWidget(friendWidget, status);
     } else {
@@ -413,7 +419,7 @@ void FriendListWidget::onFriendWidgetRenamed(FriendWidget* friendWidget)
         if (circleWidget != nullptr) {
             circleWidget->removeFriendWidget(friendWidget, status);
             circleWidget->addFriendWidget(friendWidget, status);
-            Widget::getInstance()->searchCircle(circleWidget);
+            emit searchCircle(*circleWidget);
         } else {
             listLayout->removeFriendWidget(friendWidget, status);
             listLayout->addFriendWidget(friendWidget, status);
@@ -425,7 +431,7 @@ void FriendListWidget::onGroupchatPositionChanged(bool top)
 {
     groupsOnTop = top;
 
-    if (mode != Name)
+    if (mode != SortingMode::Name)
         return;
 
     listLayout->removeItem(groupLayout.getLayout());
@@ -447,13 +453,13 @@ void FriendListWidget::cycleContacts(GenericChatroomWidget* activeChatroomWidget
     int index = -1;
     FriendWidget* friendWidget = qobject_cast<FriendWidget*>(activeChatroomWidget);
 
-    if (mode == Activity) {
+    if (mode == SortingMode::Activity) {
         if (!friendWidget) {
             return;
         }
 
-        QDate activityDate = getDateFriend(friendWidget->getFriend());
-        index = static_cast<int>(getTime(activityDate));
+        const auto activityTime = getActiveTimeFriend(friendWidget->getFriend());
+        index = static_cast<int>(getTimeBucket(activityTime));
         QWidget* widget = activityLayout->itemAt(index)->widget();
         CategoryWidget* categoryWidget = qobject_cast<CategoryWidget*>(widget);
 
@@ -473,7 +479,7 @@ void FriendListWidget::cycleContacts(GenericChatroomWidget* activeChatroomWidget
                 continue;
             }
 
-            widget = activityLayout->itemAt(index)->widget();
+            auto* widget = activityLayout->itemAt(index)->widget();
             categoryWidget = qobject_cast<CategoryWidget*>(widget);
 
             if (categoryWidget != nullptr) {
@@ -565,8 +571,11 @@ void FriendListWidget::cycleContacts(GenericChatroomWidget* activeChatroomWidget
 
 void FriendListWidget::dragEnterEvent(QDragEnterEvent* event)
 {
-    ToxId toxId(event->mimeData()->text());
-    Friend* frnd = FriendList::findFriend(toxId.getPublicKey());
+    if (!event->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    ToxPk toxPk(event->mimeData()->data("toxPk"));
+    Friend* frnd = FriendList::findFriend(toxPk);
     if (frnd)
         event->acceptProposedAction();
 }
@@ -580,8 +589,8 @@ void FriendListWidget::dropEvent(QDropEvent* event)
         return;
 
     // Check, that the user has a friend with the same ToxPk
-    const QByteArray data = QByteArray::fromHex(event->mimeData()->text().toLatin1());
-    const ToxPk toxPk{data};
+    assert(event->mimeData()->hasFormat("toxPk"));
+    const ToxPk toxPk{event->mimeData()->data("toxPk")};
     Friend* f = FriendList::findFriend(toxPk);
     if (!f)
         return;
@@ -598,17 +607,17 @@ void FriendListWidget::dropEvent(QDropEvent* event)
 
 void FriendListWidget::dayTimeout()
 {
-    if (mode == Activity) {
-        setMode(Name);
-        setMode(Activity); // Refresh all.
+    if (mode == SortingMode::Activity) {
+        setMode(SortingMode::Name);
+        setMode(SortingMode::Activity); // Refresh all.
     }
 
     dayTimer->start(timeUntilTomorrow());
 }
 
-void FriendListWidget::moveWidget(FriendWidget* widget, Status s, bool add)
+void FriendListWidget::moveWidget(FriendWidget* widget, Status::Status s, bool add)
 {
-    if (mode == Name) {
+    if (mode == SortingMode::Name) {
         const Friend* f = widget->getFriend();
         int circleId = Settings::getInstance().getFriendCircleID(f->getPublicKey());
         CircleWidget* circleWidget = CircleWidget::getFromID(circleId);
@@ -624,22 +633,19 @@ void FriendListWidget::moveWidget(FriendWidget* widget, Status s, bool add)
         circleWidget->addFriendWidget(widget, s);
     } else {
         const Friend* contact = widget->getFriend();
-        QDate activityDate = getDateFriend(contact);
-        int time = static_cast<int>(getTime(activityDate));
-        QWidget* w = activityLayout->itemAt(time)->widget();
-        CategoryWidget* categoryWidget = qobject_cast<CategoryWidget*>(w);
+        auto* categoryWidget = getTimeCategoryWidget(contact);
         categoryWidget->addFriendWidget(widget, contact->getStatus());
         categoryWidget->show();
     }
 }
 
-void FriendListWidget::updateActivityDate(const QDate& date)
+void FriendListWidget::updateActivityTime(const QDateTime& time)
 {
-    if (mode != Activity)
+    if (mode != SortingMode::Activity)
         return;
 
-    int time = static_cast<int>(getTime(date));
-    QWidget* widget = activityLayout->itemAt(time)->widget();
+    int timeIndex = static_cast<int>(getTimeBucket(time));
+    QWidget* widget = activityLayout->itemAt(timeIndex)->widget();
     CategoryWidget* categoryWidget = static_cast<CategoryWidget*>(widget);
     categoryWidget->updateStatus();
 
@@ -660,12 +666,13 @@ CircleWidget* FriendListWidget::createCircleWidget(int id)
         id = Settings::getInstance().addCircle();
 
     // Stop, after it has been created. Code after this is for displaying.
-    if (mode == Activity)
+    if (mode == SortingMode::Activity)
         return nullptr;
 
     assert(circleLayout != nullptr);
 
     CircleWidget* circleWidget = new CircleWidget(this, id);
+    emit connectCircleWidget(*circleWidget);
     circleLayout->addSortedWidget(circleWidget);
     connect(this, &FriendListWidget::onCompactChanged, circleWidget, &CircleWidget::onCompactChanged);
     connect(circleWidget, &CircleWidget::renameRequested, this, &FriendListWidget::renameCircleWidget);

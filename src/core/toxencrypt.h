@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -17,11 +17,11 @@
     along with qTox.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <QByteArray>
-#include <QString>
-
 #ifndef TOXENCRYPT_H
 #define TOXENCRYPT_H
+
+#include <QByteArray>
+#include <QString>
 
 #include <memory>
 

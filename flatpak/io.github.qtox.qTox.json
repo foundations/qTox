@@ -109,6 +109,18 @@
             ]
         },
         {
+            "name": "snorenotify",
+            "buildsystem": "cmake-ninja",
+            "sources": [
+                {
+                    "type": "git",
+                    "url": "https://github.com/KDE/snorenotify",
+                    "tag": "v0.7.0",
+                    "commit": "9124e016f4f7615af5e8fca962994f7ed85de3cc"
+                }
+            ]
+        },
+        {
             "name": "libsodium",
             "sources": [
                 {
@@ -137,14 +149,15 @@
                 {
                     "type": "git",
                     "url": "https://github.com/toktok/c-toxcore",
-                    "tag": "v0.2.7",
-                    "commit": "18117581bdc52752f77d178a990e3863a9bbbf19"
+                    "tag": "v0.2.10",
+                    "commit": "7aab0d995240c59937d1aa23b7201389341a2be9"
                 }
             ]
         },
         {
             "name": "qTox",
             "buildsystem": "cmake-ninja",
+            "config-opts": ["-DSVGZ_ICON=OFF"],
             "sources": [
                 {
                     "type": "dir",

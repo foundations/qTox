@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -20,8 +20,9 @@
 #include "settingswidget.h"
 
 #include "src/audio/audio.h"
-#include "src/core/coreav.h"
 #include "src/core/core.h"
+#include "src/core/coreav.h"
+#include "src/net/updatecheck.h"
 #include "src/persistence/settings.h"
 #include "src/video/camerasource.h"
 #include "src/widget/contentlayout.h"
@@ -40,10 +41,9 @@
 
 #include <memory>
 
-SettingsWidget::SettingsWidget(QWidget* parent)
+SettingsWidget::SettingsWidget(UpdateCheck* updateCheck, IAudioControl& audio, Widget* parent)
     : QWidget(parent, Qt::Window)
 {
-    Audio* audio = &Audio::getInstance();
     CoreAV* coreAV = Core::getInstance()->getAv();
     IAudioSettings* audioSettings = &Settings::getInstance();
     IVideoSettings* videoSettings = &Settings::getInstance();
@@ -58,14 +58,27 @@ SettingsWidget::SettingsWidget(QWidget* parent)
     bodyLayout->addWidget(settingsWidgets.get());
 
     std::unique_ptr<GeneralForm> gfrm(new GeneralForm(this));
+    connect(gfrm.get(), &GeneralForm::updateIcons, parent, &Widget::updateIcons);
+
     std::unique_ptr<UserInterfaceForm> uifrm(new UserInterfaceForm(this));
     std::unique_ptr<PrivacyForm> pfrm(new PrivacyForm());
+    connect(pfrm.get(), &PrivacyForm::clearAllReceipts, parent, &Widget::clearAllReceipts);
+
     AVForm* rawAvfrm = new AVForm(audio, coreAV, camera, audioSettings, videoSettings);
     std::unique_ptr<AVForm> avfrm(rawAvfrm);
     std::unique_ptr<AdvancedForm> expfrm(new AdvancedForm());
-    std::unique_ptr<AboutForm> abtfrm(new AboutForm());
+    std::unique_ptr<AboutForm> abtfrm(new AboutForm(updateCheck));
 
-    cfgForms = {{std::move(gfrm), std::move(uifrm), std::move(pfrm), std::move(avfrm), std::move(expfrm), std::move(abtfrm)}};
+#if UPDATE_CHECK_ENABLED
+    if (updateCheck != nullptr) {
+        connect(updateCheck, &UpdateCheck::updateAvailable, this, &SettingsWidget::onUpdateAvailable);
+    } else {
+        qWarning() << "SettingsWidget passed null UpdateCheck!";
+    }
+#endif
+
+    cfgForms = {{std::move(gfrm), std::move(uifrm), std::move(pfrm), std::move(avfrm),
+                 std::move(expfrm), std::move(abtfrm)}};
     for (auto& cfgForm : cfgForms)
         settingsWidgets->addTab(cfgForm.get(), cfgForm->getFormIcon(), cfgForm->getFormName());
 
@@ -109,6 +122,13 @@ void SettingsWidget::show(ContentLayout* contentLayout)
 void SettingsWidget::onTabChanged(int index)
 {
     settingsWidgets->setCurrentIndex(index);
+}
+
+void SettingsWidget::onUpdateAvailable(void)
+{
+    settingsWidgets->tabBar()->setProperty("update-available", true);
+    settingsWidgets->tabBar()->style()->unpolish(settingsWidgets->tabBar());
+    settingsWidgets->tabBar()->style()->polish(settingsWidgets->tabBar());
 }
 
 void SettingsWidget::retranslateUi()

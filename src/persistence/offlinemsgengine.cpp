@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -26,118 +26,128 @@
 #include <QMutexLocker>
 #include <QTimer>
 #include <QCoreApplication>
+#include <chrono>
 
-OfflineMsgEngine::OfflineMsgEngine(Friend* frnd)
+OfflineMsgEngine::OfflineMsgEngine(Friend* frnd, ICoreFriendMessageSender* messageSender)
     : mutex(QMutex::Recursive)
     , f(frnd)
-{
-}
+    , messageSender(messageSender)
+{}
 
-void OfflineMsgEngine::dischargeReceipt(int receipt)
-{
-    QMutexLocker ml(&mutex);
-
-    auto it = receipts.find(receipt);
-    if (it == receipts.end()) {
-        it = receipts.insert(receipt, Receipt());
-    } else if (it->bRecepitReceived) {
-        qWarning() << "Received duplicate receipt";
-    }
-    it->bRecepitReceived = true;
-    processReceipt(receipt);
-}
-
-void OfflineMsgEngine::registerReceipt(int receipt, int64_t messageID, ChatMessage::Ptr msg)
+/**
+* @brief Notification that the message is now delivered.
+*
+* @param[in] receipt   Toxcore message ID which the receipt is for.
+*/
+void OfflineMsgEngine::onReceiptReceived(ReceiptNum receipt)
 {
     QMutexLocker ml(&mutex);
-
-    auto it = receipts.find(receipt);
-    if (it == receipts.end()) {
-        it = receipts.insert(receipt, Receipt());
-    } else if (it->bRowValid && receipt != 0 /* offline receipt */) {
-        qWarning() << "Received duplicate registration of receipt";
+    if (receivedReceipts.contains(receipt)) {
+        qWarning() << "Receievd duplicate receipt" << receipt.get() << "from friend" << f->getId();
+        return;
     }
-    it->rowId = messageID;
-    it->bRowValid = true;
-    undeliveredMsgs[messageID] = {msg, receipt};
-    processReceipt(receipt);
+    receivedReceipts.append(receipt);
+    checkForCompleteMessages(receipt);
 }
 
+/**
+* @brief Add a message which has been saved to history, but not sent yet to the peer.
+*
+* OfflineMsgEngine will send this message once the friend becomes online again, then track its
+* receipt, updating history and chatlog once received.
+*
+* @param[in] messageID   database RowId of the message, used to eventually mark messages as received in history
+* @param[in] msg         chat message line in the chatlog, used to eventually set the message's receieved timestamp
+*/
+void OfflineMsgEngine::addUnsentMessage(Message const& message, CompletionFn completionCallback)
+{
+    QMutexLocker ml(&mutex);
+    unsentMessages.append(OfflineMessage{message, std::chrono::steady_clock::now(), completionCallback});
+}
+
+/**
+* @brief Add a message which has been saved to history, and which has been sent to the peer.
+*
+* OfflineMsgEngine will track this message's receipt. If the friend goes offline then comes back before the receipt
+* is received, OfflineMsgEngine will also resend the message, updating history and chatlog once received.
+*
+* @param[in] receipt     the toxcore message ID, corresponding to expected receipt ID
+* @param[in] messageID   database RowId of the message, used to eventually mark messages as received in history
+* @param[in] msg         chat message line in the chatlog, used to eventually set the message's receieved timestamp
+*/
+void OfflineMsgEngine::addSentMessage(ReceiptNum receipt, Message const& message,
+                                      CompletionFn completionCallback)
+{
+    QMutexLocker ml(&mutex);
+    assert(!sentMessages.contains(receipt));
+    sentMessages.insert(receipt, {message, std::chrono::steady_clock::now(), completionCallback});
+    checkForCompleteMessages(receipt);
+}
+
+/**
+* @brief Deliver all messages, used when a friend comes online.
+*/
 void OfflineMsgEngine::deliverOfflineMsgs()
 {
     QMutexLocker ml(&mutex);
 
-    if (!Settings::getInstance().getFauxOfflineMessaging())
+    if (!f->isOnline()) {
         return;
+    }
 
-    if (f->getStatus() == Status::Offline)
+    if (sentMessages.empty() && unsentMessages.empty()) {
         return;
+    }
 
-    if (undeliveredMsgs.size() == 0)
-        return;
+    QVector<OfflineMessage> messages = sentMessages.values().toVector() + unsentMessages;
+    // order messages by authorship time to resend in same order as they were written
+    std::sort(messages.begin(), messages.end(), [](const OfflineMessage& lhs, const OfflineMessage& rhs) {
+        return lhs.authorshipTime < rhs.authorshipTime;
+    });
+    removeAllMessages();
 
-    QMap<int64_t, MsgPtr> msgs = undeliveredMsgs;
-    removeAllReceipts();
-    undeliveredMsgs.clear();
-
-    for (auto iter = msgs.begin(); iter != msgs.end(); ++iter) {
-        auto val = iter.value();
-        auto key = iter.key();
-        QString messageText = val.msg->toString();
-        int rec;
-        if (val.msg->isAction()) {
-            rec = Core::getInstance()->sendAction(f->getId(), messageText);
+    for (const auto& message : messages) {
+        QString messageText = message.message.content;
+        ReceiptNum receipt;
+        bool messageSent{false};
+        if (message.message.isAction) {
+            messageSent = messageSender->sendAction(f->getId(), messageText, receipt);
         } else {
-            rec = Core::getInstance()->sendMessage(f->getId(), messageText);
+            messageSent = messageSender->sendMessage(f->getId(), messageText, receipt);
         }
-
-        registerReceipt(rec, key, val.msg);
+        if (messageSent) {
+            addSentMessage(receipt, message.message, message.completionFn);
+        } else {
+            qCritical() << "deliverOfflineMsgs failed to send message";
+            addUnsentMessage(message.message, message.completionFn);
+        }
     }
 }
 
-void OfflineMsgEngine::removeAllReceipts()
+/**
+* @brief Removes all messages which are being tracked.
+*/
+void OfflineMsgEngine::removeAllMessages()
 {
     QMutexLocker ml(&mutex);
-
-    receipts.clear();
+    receivedReceipts.clear();
+    sentMessages.clear();
+    unsentMessages.clear();
 }
 
-void OfflineMsgEngine::updateTimestamp(int receiptId)
+void OfflineMsgEngine::completeMessage(QMap<ReceiptNum, OfflineMessage>::iterator msgIt)
 {
-    QMutexLocker ml(&mutex);
-
-    auto receipt = receipts.find(receiptId);
-    const auto msg = undeliveredMsgs.constFind(receipt->rowId);
-    if (msg == undeliveredMsgs.end()) {
-        // this should never occur as registerReceipt adds the msg before processReceipt calls updateTimestamp
-        qCritical() << "Message was not in undeliveredMsgs map when attempting to update its timestamp!";
-        return;
-    }
-    msg->msg->markAsSent(QDateTime::currentDateTime());
-    undeliveredMsgs.remove(receipt->rowId);
-    receipts.erase(receipt);
+    msgIt->completionFn();
+    sentMessages.erase(msgIt);
+    receivedReceipts.removeOne(msgIt.key());
 }
 
-void OfflineMsgEngine::processReceipt(int receiptId)
+void OfflineMsgEngine::checkForCompleteMessages(ReceiptNum receipt)
 {
-    const auto receipt = receipts.constFind(receiptId);
-    if (receipt == receipts.end()) {
-        // this should never occur as callers ensure receipts contains receiptId
-        qCritical() << "Receipt was not added to map prior to attempting to process it!";
+    auto msgIt = sentMessages.find(receipt);
+    const bool receiptReceived = receivedReceipts.contains(receipt);
+    if (!receiptReceived || msgIt == sentMessages.end()) {
         return;
     }
-
-    if (!receipt->bRecepitReceived || !receipt->bRowValid)
-        return;
-
-    Profile* const profile = Nexus::getProfile();
-    if (profile->isHistoryEnabled()) {
-        profile->getHistory()->markAsSent(receipt->rowId);
-    }
-
-    if (QThread::currentThread() == QCoreApplication::instance()->thread()) {
-        updateTimestamp(receiptId);
-    } else {
-        QMetaObject::invokeMethod(this, "updateTimestamp", Qt::QueuedConnection, Q_ARG(int, receiptId));
-    }
+    completeMessage(msgIt);
 }

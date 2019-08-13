@@ -1,4 +1,6 @@
 /*
+    Copyright © 2019 by The qTox Project Contributors
+
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
     qTox is libre software: you can redistribute it and/or modify
@@ -26,6 +28,7 @@
 class FriendChatroom;
 class QPixmap;
 class MaskablePixmapWidget;
+class CircleWidget;
 
 class FriendWidget : public GenericChatroomWidget
 {
@@ -40,16 +43,19 @@ public:
     void resetEventFlags() override final;
     QString getStatusString() const override final;
     const Friend* getFriend() const override final;
+    const Contact* getContact() const override final;
 
     void search(const QString& searchString, bool hide = false);
 
 signals:
     void friendWidgetClicked(FriendWidget* widget);
-    void removeFriend(int friendId);
-    void copyFriendIdToClipboard(int friendId);
+    void removeFriend(const ToxPk& friendPk);
+    void copyFriendIdToClipboard(const ToxPk& friendPk);
     void contextMenuCalled(QContextMenuEvent* event);
     void friendHistoryRemoved();
     void friendWidgetRenamed(FriendWidget* friendWidget);
+    void searchCircle(CircleWidget& circleWidget);
+    void updateFriendActivity(Friend& frnd);
 
 public slots:
     void onAvatarSet(const ToxPk& friendPk, const QPixmap& pic);

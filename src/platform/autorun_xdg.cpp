@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -18,7 +18,6 @@
 */
 
 #include <QApplication>
-#if defined(Q_OS_UNIX) && !defined(__APPLE__) && !defined(__MACH__)
 #include "src/persistence/settings.h"
 #include "src/platform/autorun.h"
 #include <QDir>
@@ -69,5 +68,3 @@ bool Platform::getAutorun()
 {
     return QFile(getAutostartFilePath(getAutostartDirPath())).exists();
 }
-
-#endif // defined(Q_OS_UNIX) && !defined(__APPLE__) && !defined(__MACH__)

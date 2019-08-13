@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -28,4 +28,12 @@ Timestamp::Timestamp(const QDateTime& time, const QString& format, const QFont& 
 QDateTime Timestamp::getTime()
 {
     return time;
+}
+
+QSizeF Timestamp::idealSize()
+{
+    if (doc) {
+        return QSizeF(qMin(doc->idealWidth(), width), doc->size().height());
+    }
+    return size;
 }

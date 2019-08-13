@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,6 +22,7 @@
 #include "tabcompleter.h"
 #include "src/core/core.h"
 #include "src/core/coreav.h"
+#include "src/core/groupid.h"
 #include "src/chatlog/chatlog.h"
 #include "src/chatlog/content/text.h"
 #include "src/model/friend.h"
@@ -50,7 +51,7 @@ const auto LABEL_PEER_TYPE_OUR = QVariant(QStringLiteral("our"));
 const auto LABEL_PEER_TYPE_MUTED = QVariant(QStringLiteral("muted"));
 const auto LABEL_PEER_PLAYING_AUDIO = QVariant(QStringLiteral("true"));
 const auto LABEL_PEER_NOT_PLAYING_AUDIO = QVariant(QStringLiteral("false"));
-const auto PEER_LABEL_STYLE_SHEET_PATH = QStringLiteral(":/ui/chatArea/chatHead.css");
+const auto PEER_LABEL_STYLE_SHEET_PATH = QStringLiteral("chatArea/chatHead.css");
 }
 
 /**
@@ -81,8 +82,8 @@ QString editName(const QString& name)
  * @brief Timeout = peer stopped sending audio.
  */
 
-GroupChatForm::GroupChatForm(Group* chatGroup)
-    : GenericChatForm (chatGroup)
+GroupChatForm::GroupChatForm(Group* chatGroup, IChatLog& chatLog, IMessageDispatcher& messageDispatcher)
+    : GenericChatForm(chatGroup, chatLog, messageDispatcher)
     , group(chatGroup)
     , inCall(false)
 {
@@ -117,19 +118,20 @@ GroupChatForm::GroupChatForm(Group* chatGroup)
     //nameLabel->setMinimumHeight(12);
     nusersLabel->setMinimumHeight(12);
 
-    connect(sendButton, SIGNAL(clicked()), this, SLOT(onSendTriggered()));
-    connect(msgEdit, SIGNAL(enterPressed()), this, SLOT(onSendTriggered()));
     connect(msgEdit, &ChatTextEdit::tabPressed, tabber, &TabCompleter::complete);
     connect(msgEdit, &ChatTextEdit::keyPressed, tabber, &TabCompleter::reset);
     connect(headWidget, &ChatFormHeader::callTriggered, this, &GroupChatForm::onCallClicked);
     connect(headWidget, &ChatFormHeader::micMuteToggle, this, &GroupChatForm::onMicMuteToggle);
     connect(headWidget, &ChatFormHeader::volMuteToggle, this, &GroupChatForm::onVolMuteToggle);
     connect(headWidget, &ChatFormHeader::nameChanged, chatGroup, &Group::setName);
-    connect(group, &Group::userListChanged, this, &GroupChatForm::onUserListChanged);
     connect(group, &Group::titleChanged, this, &GroupChatForm::onTitleChanged);
+    connect(group, &Group::userJoined, this, &GroupChatForm::onUserJoined);
+    connect(group, &Group::userLeft, this, &GroupChatForm::onUserLeft);
+    connect(group, &Group::peerNameChanged, this, &GroupChatForm::onPeerNameChanged);
+    connect(group, &Group::numPeersChanged, this, &GroupChatForm::updateUserCount);
     connect(&Settings::getInstance(), &Settings::blackListChanged, this, &GroupChatForm::updateUserNames);
 
-    onUserListChanged();
+    updateUserNames();
     setAcceptDrops(true);
     Translator::registerHandler(std::bind(&GroupChatForm::retranslateUi, this), this);
 }
@@ -139,57 +141,8 @@ GroupChatForm::~GroupChatForm()
     Translator::unregister(this);
 }
 
-void GroupChatForm::onSendTriggered()
+void GroupChatForm::onTitleChanged(const QString& author, const QString& title)
 {
-    QString msg = msgEdit->toPlainText();
-    if (msg.isEmpty())
-        return;
-
-    msgEdit->setLastMessage(msg);
-    msgEdit->clear();
-
-    if (group->getPeersCount() != 1) {
-        if (msg.startsWith(ChatForm::ACTION_PREFIX, Qt::CaseInsensitive)) {
-            msg.remove(0, ChatForm::ACTION_PREFIX.length());
-            emit sendAction(group->getId(), msg);
-        } else {
-            emit sendMessage(group->getId(), msg);
-        }
-    } else {
-        if (msg.startsWith(ChatForm::ACTION_PREFIX, Qt::CaseInsensitive))
-            addSelfMessage(msg.mid(ChatForm::ACTION_PREFIX.length()), QDateTime::currentDateTime(),
-                           true);
-        else
-            addSelfMessage(msg, QDateTime::currentDateTime(), false);
-    }
-}
-
-/**
- * @brief This slot is intended to connect to Group::userListChanged signal.
- * Brief list of actions made by slot:
- *      1) sets text of how many people are in the group;
- *      2) creates lexicographically sorted comma-separated list of user names, each name in its own
- *      label;
- *      3) sets call button style depending on peer count and etc.
- */
-void GroupChatForm::onUserListChanged()
-{
-    updateUserCount();
-    updateUserNames();
-
-    // Enable or disable call button
-    const int peersCount = group->getPeersCount();
-    const bool online = peersCount > 1;
-    headWidget->updateCallButtons(online, inCall);
-    if (!online || !group->isAvGroupchat()) {
-        Core::getInstance()->getAv()->leaveGroupCall(group->getId());
-        hideNetcam();
-    }
-}
-
-void GroupChatForm::onTitleChanged(uint32_t groupId, const QString& author, const QString& title)
-{
-    Q_UNUSED(groupId);
     if (author.isEmpty()) {
         return;
     }
@@ -197,33 +150,6 @@ void GroupChatForm::onTitleChanged(uint32_t groupId, const QString& author, cons
     const QString message = tr("%1 has set the title to %2").arg(author, title);
     const QDateTime curTime = QDateTime::currentDateTime();
     addSystemInfoMessage(message, ChatMessage::INFO, curTime);
-}
-
-void GroupChatForm::searchInBegin(const QString& phrase, const ParameterSearch& parameter)
-{
-    disableSearchText();
-
-    searchPoint = QPoint(1, -1);
-
-    if (parameter.period == PeriodSearch::WithTheFirst || parameter.period == PeriodSearch::AfterDate) {
-        onSearchDown(phrase, parameter);
-    } else {
-        onSearchUp(phrase, parameter);
-    }
-}
-
-void GroupChatForm::onSearchUp(const QString& phrase, const ParameterSearch& parameter)
-{
-    if (!searchInText(phrase, parameter, SearchDirection::Up)) {
-        emit messageNotFoundShow(SearchDirection::Up);
-    }
-}
-
-void GroupChatForm::onSearchDown(const QString& phrase, const ParameterSearch& parameter)
-{
-    if (!searchInText(phrase, parameter, SearchDirection::Down)) {
-        emit messageNotFoundShow(SearchDirection::Down);
-    }
 }
 
 void GroupChatForm::onScreenshotClicked()
@@ -261,12 +187,14 @@ void GroupChatForm::updateUserNames()
      * and then sort them by their text and add them to the layout in that order */
     const auto selfPk = Core::getInstance()->getSelfPublicKey();
     for (const auto& peerPk : peers.keys()) {
-        const QString fullName = peers.value(peerPk);
-        const QString editedName = editName(fullName).append(QLatin1String(", "));
-        QLabel* const label = new QLabel(editedName);
-        if (editedName != fullName) {
-            label->setToolTip(fullName);
-        }
+        const QString peerName = peers.value(peerPk);
+        const QString editedName = editName(peerName);
+        QLabel* const label = new QLabel(editedName + QLatin1String(", "));
+        if (editedName != peerName) {
+            label->setToolTip(peerName + " (" + peerPk.toString() + ")");
+        } else if (peerName != peerPk.toString()) {
+            label->setToolTip(peerPk.toString());
+        } // else their name is just their Pk, no tooltip needed
         label->setTextFormat(Qt::PlainText);
         label->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -277,8 +205,6 @@ void GroupChatForm::updateUserNames()
             label->setProperty("peerType", LABEL_PEER_TYPE_OUR);
         } else if (s.getBlackList().contains(peerPk.toString())) {
             label->setProperty("peerType", LABEL_PEER_TYPE_MUTED);
-        } else if (netcam != nullptr) {
-            static_cast<GroupNetCamView*>(netcam)->addPeer(peerPk, fullName);
         }
 
         label->setStyleSheet(Style::getStylesheet(PEER_LABEL_STYLE_SHEET_PATH));
@@ -292,7 +218,7 @@ void GroupChatForm::updateUserNames()
     // add the labels in alphabetical order into the layout
     auto nickLabelList = peerLabels.values();
 
-    qSort(nickLabelList.begin(), nickLabelList.end(), [](const QLabel* a, const QLabel* b)
+    std::sort(nickLabelList.begin(), nickLabelList.end(), [](const QLabel* a, const QLabel* b)
     {
         return a->text().toLower() < b->text().toLower();
     });
@@ -307,9 +233,29 @@ void GroupChatForm::updateUserNames()
     }
 }
 
+void GroupChatForm::onUserJoined(const ToxPk& user, const QString& name)
+{
+    addSystemInfoMessage(tr("%1 has joined the group").arg(name), ChatMessage::INFO, QDateTime::currentDateTime());
+    updateUserNames();
+}
+
+void GroupChatForm::onUserLeft(const ToxPk& user, const QString& name)
+{
+    addSystemInfoMessage(tr("%1 has left the group").arg(name), ChatMessage::INFO, QDateTime::currentDateTime());
+    updateUserNames();
+}
+
+void GroupChatForm::onPeerNameChanged(const ToxPk& peer, const QString& oldName, const QString& newName)
+{
+    addSystemInfoMessage(tr("%1 is now known as %2").arg(oldName, newName), ChatMessage::INFO, QDateTime::currentDateTime());
+    updateUserNames();
+}
+
 void GroupChatForm::peerAudioPlaying(ToxPk peerPk)
 {
     peerLabels[peerPk]->setProperty("playingAudio", LABEL_PEER_PLAYING_AUDIO);
+    peerLabels[peerPk]->style()->unpolish(peerLabels[peerPk]);
+    peerLabels[peerPk]->style()->polish(peerLabels[peerPk]);
     // TODO(sudden6): check if this can ever be false, cause [] default constructs
     if (!peerAudioTimers[peerPk]) {
         peerAudioTimers[peerPk] = new QTimer(this);
@@ -318,12 +264,15 @@ void GroupChatForm::peerAudioPlaying(ToxPk peerPk)
             if (netcam) {
                 static_cast<GroupNetCamView*>(netcam)->removePeer(peerPk);
             }
-
-            peerLabels[peerPk]->setProperty("playingAudio", LABEL_PEER_NOT_PLAYING_AUDIO);
+            auto it = peerLabels.find(peerPk);
+            if (it != peerLabels.end()) {
+                peerLabels[peerPk]->setProperty("playingAudio", LABEL_PEER_NOT_PLAYING_AUDIO);
+                peerLabels[peerPk]->style()->unpolish(peerLabels[peerPk]);
+                peerLabels[peerPk]->style()->polish(peerLabels[peerPk]);
+            }
             delete peerAudioTimers[peerPk];
             peerAudioTimers[peerPk] = nullptr;
         });
-
         if (netcam) {
             static_cast<GroupNetCamView*>(netcam)->removePeer(peerPk);
             const auto nameIt = group->getPeerList().find(peerPk);
@@ -337,22 +286,28 @@ void GroupChatForm::peerAudioPlaying(ToxPk peerPk)
 
 void GroupChatForm::dragEnterEvent(QDragEnterEvent* ev)
 {
-    ToxId toxId = ToxId(ev->mimeData()->text());
-    Friend* frnd = FriendList::findFriend(toxId.getPublicKey());
+    if (!ev->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    ToxPk toxPk{ev->mimeData()->data("toxPk")};
+    Friend* frnd = FriendList::findFriend(toxPk);
     if (frnd)
         ev->acceptProposedAction();
 }
 
 void GroupChatForm::dropEvent(QDropEvent* ev)
 {
-    ToxId toxId = ToxId(ev->mimeData()->text());
-    Friend* frnd = FriendList::findFriend(toxId.getPublicKey());
+    if (!ev->mimeData()->hasFormat("toxPk")) {
+        return;
+    }
+    ToxPk toxPk{ev->mimeData()->data("toxPk")};
+    Friend* frnd = FriendList::findFriend(toxPk);
     if (!frnd)
         return;
 
     int friendId = frnd->getId();
     int groupId = group->getId();
-    if (frnd->getStatus() != Status::Offline) {
+    if (frnd->isOnline()) {
         Core::getInstance()->groupInviteFriend(friendId, groupId);
     }
 }
@@ -389,11 +344,7 @@ void GroupChatForm::onCallClicked()
         inCall = true;
         showNetcam();
     } else {
-        av->leaveGroupCall(group->getId());
-        audioInputFlag = false;
-        audioOutputFlag = false;
-        inCall = false;
-        hideNetcam();
+        leaveGroupCall();
     }
 
     const int peersCount = group->getPeersCount();
@@ -409,16 +360,16 @@ void GroupChatForm::onCallClicked()
 
 GenericNetCamView* GroupChatForm::createNetcam()
 {
-    GroupNetCamView* view = new GroupNetCamView(group->getId(), this);
+    auto view = new GroupNetCamView(group->getId(), this);
 
     const auto& names = group->getPeerList();
     const auto ownPk = Core::getInstance()->getSelfPublicKey();
     for (const auto& peerPk : names.keys()) {
-        if (peerPk != ownPk) {
+        auto timerIt = peerAudioTimers.find(peerPk);
+        if (peerPk != ownPk && timerIt != peerAudioTimers.end()) {
             static_cast<GroupNetCamView*>(view)->addPeer(peerPk, names.find(peerPk).value());
         }
     }
-
     return view;
 }
 
@@ -447,19 +398,19 @@ void GroupChatForm::keyReleaseEvent(QKeyEvent* ev)
 /**
  * @brief Updates users' count label text
  */
-void GroupChatForm::updateUserCount()
+void GroupChatForm::updateUserCount(int numPeers)
 {
-    const int peersCount = group->getPeersCount();
-    if (peersCount == 1) {
-        nusersLabel->setText(tr("1 user in chat", "Number of users in chat"));
-    } else {
-        nusersLabel->setText(tr("%1 users in chat", "Number of users in chat").arg(peersCount));
+    nusersLabel->setText(tr("%n user(s) in chat", "Number of users in chat", numPeers));
+    const bool online = numPeers > 1;
+    headWidget->updateCallButtons(online, inCall);
+    if (inCall && (!online || !group->isAvGroupchat())) {
+        leaveGroupCall();
     }
 }
 
 void GroupChatForm::retranslateUi()
 {
-    updateUserCount();
+    updateUserCount(group->getPeersCount());
 }
 
 void GroupChatForm::onLabelContextMenuRequested(const QPoint& localPos)
@@ -517,4 +468,14 @@ void GroupChatForm::onLabelContextMenuRequested(const QPoint& localPos)
 
         s.setBlackList(blackList);
     }
+}
+
+void GroupChatForm::leaveGroupCall()
+{
+    CoreAV* av = Core::getInstance()->getAv();
+    av->leaveGroupCall(group->getId());
+    audioInputFlag = false;
+    audioOutputFlag = false;
+    inCall = false;
+    hideNetcam();
 }

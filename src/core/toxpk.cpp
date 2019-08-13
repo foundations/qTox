@@ -1,9 +1,30 @@
+/*
+    Copyright © 2019 by The qTox Project Contributors
+
+    This file is part of qTox, a Qt-based graphical interface for Tox.
+
+    qTox is libre software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    qTox is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with qTox.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "toxpk.h"
 
 #include <tox/tox.h>
 
 #include <QByteArray>
 #include <QString>
+
+#include <cassert>
 
 /**
  * @class ToxPk
@@ -14,7 +35,7 @@
  * @brief The default constructor. Creates an empty Tox key.
  */
 ToxPk::ToxPk()
-    : key()
+    : ContactId()
 {
 }
 
@@ -23,7 +44,7 @@ ToxPk::ToxPk()
  * @param other ToxPk to copy
  */
 ToxPk::ToxPk(const ToxPk& other)
-    : key(other.key)
+    : ContactId(other.id)
 {
 }
 
@@ -33,12 +54,10 @@ ToxPk::ToxPk(const ToxPk& other)
  *              TOX_PUBLIC_KEY_SIZE, else the ToxPk will be empty.
  */
 ToxPk::ToxPk(const QByteArray& rawId)
+    : ContactId([rawId](){
+        assert(rawId.length() == TOX_PUBLIC_KEY_SIZE);
+        return rawId;}())
 {
-    if (rawId.length() == TOX_PUBLIC_KEY_SIZE) {
-        key = QByteArray(rawId);
-    } else {
-        key = QByteArray();
-    }
 }
 
 /**
@@ -47,86 +66,15 @@ ToxPk::ToxPk(const QByteArray& rawId)
  * TOX_PUBLIC_KEY_SIZE from the specified buffer.
  */
 ToxPk::ToxPk(const uint8_t* rawId)
+    : ContactId(QByteArray(reinterpret_cast<const char*>(rawId), TOX_PUBLIC_KEY_SIZE))
 {
-    key = QByteArray(reinterpret_cast<const char*>(rawId), TOX_PUBLIC_KEY_SIZE);
-}
-
-/**
- * @brief Compares the equality of the ToxPk.
- * @param other ToxPk to compare.
- * @return True if both ToxPks are equal, false otherwise.
- */
-bool ToxPk::operator==(const ToxPk& other) const
-{
-    return key == other.key;
-}
-
-/**
- * @brief Compares the inequality of the ToxPk.
- * @param other ToxPk to compare.
- * @return True if both ToxPks are not equal, false otherwise.
- */
-bool ToxPk::operator!=(const ToxPk& other) const
-{
-    return key != other.key;
-}
-
-/**
- * @brief Compares two ToxPks
- * @param other ToxPk to compare.
- * @return True if this ToxPks is less than the other ToxPk, false otherwise.
- */
-bool ToxPk::operator<(const ToxPk& other) const
-{
-    return key < other.key;
-}
-
-/**
- * @brief Converts the ToxPk to a uppercase hex string.
- * @return QString containing the hex representation of the key
- */
-QString ToxPk::toString() const
-{
-    return key.toHex().toUpper();
-}
-
-/**
- * @brief Returns a pointer to the raw key data.
- * @return Pointer to the raw key data, which is exactly `ToxPk::getPkSize()`
- *         bytes long. Returns a nullptr if the ToxPk is empty.
- */
-const uint8_t* ToxPk::getBytes() const
-{
-    if (key.isEmpty()) {
-        return nullptr;
-    }
-
-    return reinterpret_cast<const uint8_t*>(key.constData());
-}
-
-/**
- * @brief Get a copy of the key
- * @return Copied key bytes
- */
-QByteArray ToxPk::getKey() const
-{
-    return QByteArray(key); // TODO: Is a copy really necessary?
-}
-
-/**
- * @brief Checks if the ToxPk contains a key.
- * @return True if there is a key, False otherwise.
- */
-bool ToxPk::isEmpty() const
-{
-    return key.isEmpty();
 }
 
 /**
  * @brief Get size of public key in bytes.
  * @return Size of public key in bytes.
  */
-int ToxPk::getPkSize()
+int ToxPk::getSize() const
 {
     return TOX_PUBLIC_KEY_SIZE;
 }

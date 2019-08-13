@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -20,7 +20,6 @@
 #include "rawdatabase.h"
 
 #include <cassert>
-#include <tox/tox.h>  // TOX_VERSION_IS_API_COMPATIBLE
 #include <tox/toxencryptsave.h>
 
 #include <QCoreApplication>
@@ -152,7 +151,7 @@ bool RawDatabase::open(const QString& path, const QString& hexKey)
 
     if (!QFile::exists(path) && QFile::exists(path + ".tmp")) {
         qWarning() << "Restoring database from temporary export file! Did we crash while changing "
-                      "the password?";
+                      "the password or upgrading?";
         QFile::rename(path + ".tmp", path);
     }
 
@@ -176,19 +175,137 @@ bool RawDatabase::open(const QString& path, const QString& hexKey)
     }
 
     if (!hexKey.isEmpty()) {
-        if (!execNow("PRAGMA key = \"x'" + hexKey + "'\"")) {
-            qWarning() << "Failed to set encryption key";
-            close();
-            return false;
-        }
-
-        if (!execNow("SELECT count(*) FROM sqlite_master")) {
-            qWarning() << "Database is unusable, check that the password is correct";
+        if (!openEncryptedDatabaseAtLatestVersion(hexKey)) {
             close();
             return false;
         }
     }
     return true;
+}
+
+bool RawDatabase::openEncryptedDatabaseAtLatestVersion(const QString& hexKey)
+{
+    // old qTox database are saved with SQLCipher 3.x defaults. New qTox (and for a period during 1.16.3 master) are stored
+    // with 4.x defaults. We need to support opening both databases saved with 3.x defaults and 4.x defaults
+    // so upgrade from 3.x default to 4.x defaults while we're at it
+    if (!setKey(hexKey)) {
+        return false;
+    }
+
+    if (setCipherParameters(4)) {
+        if (testUsable()) {
+            qInfo() << "Opened database with SQLCipher 4.x parameters";
+            return true;
+        } else {
+            return updateSavedCipherParameters(hexKey);
+        }
+    } else {
+        // setKey again to clear old bad cipher settings
+        if (setKey(hexKey) && setCipherParameters(3) && testUsable()) {
+            qInfo() << "Opened database with SQLCipher 3.x parameters";
+            return true;
+        } else {
+            qCritical() << "Failed to open database with SQLCipher 3.x parameters";
+            return false;
+        }
+    }
+}
+
+bool RawDatabase::testUsable()
+{
+    // this will unfortunately log a warning if it fails, even though we may expect failure
+    return execNow("SELECT count(*) FROM sqlite_master;");
+}
+
+/**
+ * @brief Changes stored db encryption from SQLCipher 3.x defaults to 4.x defaults
+ */
+bool RawDatabase::updateSavedCipherParameters(const QString& hexKey)
+{
+    setKey(hexKey); // setKey again because a SELECT has already been run, causing crypto settings to take effect
+    if (!setCipherParameters(3)) {
+        return false;
+    }
+
+    const auto user_version = getUserVersion();
+    if (user_version < 0) {
+        return false;
+    }
+    if (!execNow("ATTACH DATABASE '" + path + ".tmp' AS sqlcipher4 KEY \"x'" + hexKey + "'\";")) {
+        return false;
+    }
+    if (!setCipherParameters(4, "sqlcipher4")) {
+        return false;
+    }
+    if (!execNow("SELECT sqlcipher_export('sqlcipher4');")) {
+        return false;
+    }
+    if (!execNow(QString("PRAGMA sqlcipher4.user_version = %1;").arg(user_version))) {
+        return false;
+    }
+    if (!execNow("DETACH DATABASE sqlcipher4;")) {
+        return false;
+    }
+    if (!commitDbSwap(hexKey)) {
+        return false;
+    }
+    qInfo() << "Upgraded database from SQLCipher 3.x defaults to SQLCipher 4.x defaults";
+    return true;
+}
+
+bool RawDatabase::setCipherParameters(int majorVersion, const QString& database)
+{
+    QString prefix;
+    if (!database.isNull()) {
+        prefix = database + ".";
+    }
+    // from https://www.zetetic.net/blog/2018/11/30/sqlcipher-400-release/
+    const QString default3_xParams{"PRAGMA database.cipher_page_size = 1024; PRAGMA database.kdf_iter = 64000;"
+                   "PRAGMA database.cipher_hmac_algorithm = HMAC_SHA1;"
+                   "PRAGMA database.cipher_kdf_algorithm = PBKDF2_HMAC_SHA1;"};
+    const QString default4_xParams{"PRAGMA database.cipher_page_size = 4096; PRAGMA database.kdf_iter = 256000;"
+                   "PRAGMA database.cipher_hmac_algorithm = HMAC_SHA512;"
+                   "PRAGMA database.cipher_kdf_algorithm = PBKDF2_HMAC_SHA512;"};
+
+    QString defaultParams;
+    switch(majorVersion) {
+        case 3: {
+            defaultParams = default3_xParams;
+            break;
+        }
+        case 4: {
+            defaultParams = default4_xParams;
+            break;
+        }
+        default: {
+            qCritical() << __FUNCTION__ << "called with unsupported SQLCipher major version" << majorVersion;
+            return false;
+        }
+    }
+    qDebug() << "Setting SQLCipher 4.x parameters";
+    return execNow(defaultParams.replace("database.", prefix));
+}
+
+bool RawDatabase::setKey(const QString& hexKey)
+{
+    // setKey again to clear old bad cipher settings
+    if (!execNow("PRAGMA key = \"x'" + hexKey + "'\"")) {
+        qWarning() << "Failed to set encryption key";
+        return false;
+    }
+    return true;
+}
+
+int RawDatabase::getUserVersion()
+{
+    int64_t user_version;
+    if (!execNow(RawDatabase::Query("PRAGMA user_version", [&](const QVector<QVariant>& row) {
+            user_version = row[0].toLongLong();
+        }))) {
+        qCritical() << "Failed to read user_version during cipher upgrade";
+        return -1;
+    }
+    return user_version;
 }
 
 /**
@@ -348,51 +465,82 @@ bool RawDatabase::setPassword(const QString& password)
                 return false;
             }
         } else {
-            // Need to encrypt the database
-            if (!execNow("ATTACH DATABASE '" + path + ".tmp' AS encrypted KEY \"x'" + newHexKey
-                         + "'\";"
-                           "SELECT sqlcipher_export('encrypted');"
-                           "DETACH DATABASE encrypted;")) {
-                qWarning() << "Failed to export encrypted database";
+            if (!encryptDatabase(newHexKey)) {
                 close();
                 return false;
             }
-
-            // This is racy as hell, but nobody will race with us since we hold the profile lock
-            // If we crash or die here, the rename should be atomic, so we can recover no matter
-            // what
-            close();
-            QFile::remove(path);
-            QFile::rename(path + ".tmp", path);
             currentHexKey = newHexKey;
-            if (!open(path, currentHexKey)) {
-                qWarning() << "Failed to open encrypted database";
-                return false;
-            }
         }
     } else {
         if (currentHexKey.isEmpty())
             return true;
 
-        // Need to decrypt the database
-        if (!execNow("ATTACH DATABASE '" + path + ".tmp' AS plaintext KEY '';"
-                                                  "SELECT sqlcipher_export('plaintext');"
-                                                  "DETACH DATABASE plaintext;")) {
-            qWarning() << "Failed to export decrypted database";
+        if (!decryptDatabase()) {
             close();
             return false;
         }
+    }
+    return true;
+}
 
-        // This is racy as hell, but nobody will race with us since we hold the profile lock
-        // If we crash or die here, the rename should be atomic, so we can recover no matter what
-        close();
-        QFile::remove(path);
-        QFile::rename(path + ".tmp", path);
-        currentHexKey.clear();
-        if (!open(path)) {
-            qCritical() << "Failed to open decrypted database";
-            return false;
-        }
+bool RawDatabase::encryptDatabase(const QString& newHexKey)
+{
+    const auto user_version = getUserVersion();
+    if (user_version < 0) {
+        return false;
+    }
+    if (!execNow("ATTACH DATABASE '" + path + ".tmp' AS encrypted KEY \"x'" + newHexKey
+                    + "'\";")) {
+        qWarning() << "Failed to export encrypted database";
+        return false;
+    }
+    if (!setCipherParameters(4, "encrypted")) {
+        return false;
+    }
+    if (!execNow("SELECT sqlcipher_export('encrypted');")) {
+        return false;
+    }
+    if (!execNow(QString("PRAGMA encrypted.user_version = %1;").arg(user_version))) {
+        return false;
+    }
+    if (!execNow("DETACH DATABASE encrypted;")) {
+        return false;
+    }
+    return commitDbSwap(newHexKey);
+}
+
+bool RawDatabase::decryptDatabase()
+{
+    const auto user_version = getUserVersion();
+    if (user_version < 0) {
+        return false;
+    }
+    if (!execNow("ATTACH DATABASE '" + path + ".tmp' AS plaintext KEY '';"
+                                                "SELECT sqlcipher_export('plaintext');")) {
+        qWarning() << "Failed to export decrypted database";
+        return false;
+    }
+    if (!execNow(QString("PRAGMA plaintext.user_version = %1;").arg(user_version))) {
+        return false;
+    }
+    if (!execNow("DETACH DATABASE plaintext;")) {
+        return false;
+    }
+    return commitDbSwap({});
+}
+
+bool RawDatabase::commitDbSwap(const QString& hexKey)
+{
+    // This is racy as hell, but nobody will race with us since we hold the profile lock
+    // If we crash or die here, the rename should be atomic, so we can recover no matter
+    // what
+    close();
+    QFile::remove(path);
+    QFile::rename(path + ".tmp", path);
+    currentHexKey = hexKey;
+    if (!open(path, currentHexKey)) {
+        qCritical() << "Failed to swap db";
+        return false;
     }
     return true;
 }
@@ -488,15 +636,9 @@ QString RawDatabase::deriveKey(const QString& password)
 
     static const uint8_t expandConstant[TOX_PASS_SALT_LENGTH + 1] =
         "L'ignorance est le pire des maux";
-#if TOX_VERSION_IS_API_COMPATIBLE(0, 2, 0)
     const std::unique_ptr<Tox_Pass_Key, PassKeyDeleter> key(tox_pass_key_derive_with_salt(
         reinterpret_cast<const uint8_t*>(passData.data()),
         static_cast<std::size_t>(passData.size()), expandConstant, nullptr));
-#else
-    const std::unique_ptr<Tox_Pass_Key, PassKeyDeleter> key(tox_pass_key_new());
-    tox_pass_key_derive_with_salt(key.get(), reinterpret_cast<const uint8_t*>(passData.data()),
-                                  static_cast<std::size_t>(passData.size()), expandConstant, nullptr);
-#endif
     return QByteArray(reinterpret_cast<char*>(key.get()) + 32, 32).toHex();
 }
 
@@ -521,17 +663,10 @@ QString RawDatabase::deriveKey(const QString& password, const QByteArray& salt)
 
     static_assert(TOX_PASS_KEY_LENGTH >= 32, "toxcore must provide 256bit or longer keys");
 
-#if TOX_VERSION_IS_API_COMPATIBLE(0, 2, 0)
     const std::unique_ptr<Tox_Pass_Key, PassKeyDeleter> key(tox_pass_key_derive_with_salt(
         reinterpret_cast<const uint8_t*>(passData.data()),
         static_cast<std::size_t>(passData.size()),
         reinterpret_cast<const uint8_t*>(salt.constData()), nullptr));
-#else
-    const std::unique_ptr<Tox_Pass_Key, PassKeyDeleter> key(tox_pass_key_new());
-    tox_pass_key_derive_with_salt(key.get(), reinterpret_cast<const uint8_t*>(passData.data()),
-                                  static_cast<std::size_t>(passData.size()),
-                                  reinterpret_cast<const uint8_t*>(salt.constData()), nullptr);
-#endif
     return QByteArray(reinterpret_cast<char*>(key.get()) + 32, 32).toHex();
 }
 
@@ -650,7 +785,7 @@ void RawDatabase::process()
             }
 
             if (query.insertCallback)
-                query.insertCallback(sqlite3_last_insert_rowid(sqlite));
+                query.insertCallback(RowId{sqlite3_last_insert_rowid(sqlite)});
         }
 
         if (trans.success != nullptr)

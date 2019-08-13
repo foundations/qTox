@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -48,7 +48,7 @@ SearchForm::SearchForm(QWidget* parent) : QWidget(parent)
 
     settings->setVisible(false);
     messageLabel->setProperty("state", QStringLiteral("red"));
-    messageLabel->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/labels.css")));
+    messageLabel->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/labels.css")));
     messageLabel->setText(tr("The text could not be found."));
     messageLabel->setVisible(false);
 
@@ -118,6 +118,17 @@ void SearchForm::insertEditor(const QString &text)
     searchLine->insert(text);
 }
 
+void SearchForm::reloadTheme()
+{
+    settingsButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+    upButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+    downButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+    hideButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+    startButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+
+    settings->reloadTheme();
+}
+
 void SearchForm::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
@@ -130,7 +141,7 @@ QPushButton *SearchForm::createButton(const QString& name, const QString& state)
     btn->setAttribute(Qt::WA_LayoutUsesWidgetRect);
     btn->setObjectName(name);
     btn->setProperty("state", state);
-    btn->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/buttons.css")));
+    btn->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
 
     return btn;
 }
@@ -156,7 +167,7 @@ void SearchForm::setStateName(QPushButton *btn, ToolButtonState state)
 {
     const auto index = static_cast<unsigned long>(state);
     btn->setProperty("state", STATE_NAME[index]);
-    btn->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/buttons.css")));
+    btn->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
     btn->setEnabled(index != 0);
 }
 

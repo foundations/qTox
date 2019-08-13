@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -22,8 +22,6 @@
 #ifndef PLATFORM_X11_DISPLAY_H
 #define PLATFORM_X11_DISPLAY_H
 
-#if defined(Q_OS_UNIX) && !defined(__APPLE__) && !defined(__MACH__)
-
 typedef struct _XDisplay Display;
 
 namespace Platform {
@@ -34,8 +32,6 @@ void unlock();
 }
 
 }
-
-#endif // Q_OS_UNIX && !defined(__APPLE__) && !defined(__MACH__)
 
 #endif // PLATFORM_X11_DISPLAY_H
 

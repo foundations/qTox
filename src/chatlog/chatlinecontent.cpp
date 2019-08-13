@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -85,6 +85,10 @@ qreal ChatLineContent::getAscent() const
 }
 
 void ChatLineContent::visibilityChanged(bool)
+{
+}
+
+void ChatLineContent::reloadTheme()
 {
 }
 

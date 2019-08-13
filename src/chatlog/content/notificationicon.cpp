@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -19,6 +19,7 @@
 
 #include "notificationicon.h"
 #include "../pixmapcache.h"
+#include "src/widget/style.h"
 
 #include <QGraphicsScene>
 #include <QPainter>
@@ -27,7 +28,7 @@
 NotificationIcon::NotificationIcon(QSize Size)
     : size(Size)
 {
-    pmap = PixmapCache::getInstance().get(":/ui/chatArea/typing.svg", size);
+    pmap = PixmapCache::getInstance().get(Style::getImagePath("chatArea/typing.svg"), size);
 
     updateTimer = new QTimer(this);
     updateTimer->setInterval(1000 / 30);

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -26,21 +26,18 @@
 #include <QFont>
 #include <QMessageBox>
 #include <QRegularExpressionValidator>
-#include <QStandardPaths>
 #include <QStyleFactory>
 #include <QTime>
 #include <QVector>
 
 #include "src/core/core.h"
 #include "src/core/coreav.h"
-#include "src/core/recursivesignalblocker.h"
-#include "src/net/autoupdate.h"
-#include "src/nexus.h"
 #include "src/persistence/profile.h"
 #include "src/persistence/settings.h"
 #include "src/persistence/smileypack.h"
 #include "src/widget/form/settingswidget.h"
 #include "src/widget/style.h"
+#include "src/widget/tool/recursivesignalblocker.h"
 #include "src/widget/translator.h"
 #include "src/widget/widget.h"
 
@@ -74,15 +71,23 @@ UserInterfaceForm::UserInterfaceForm(SettingsWidget* myParent)
     bodyUI->txtChatFont->setCurrentFont(chatBaseFont);
     int index = static_cast<int>(s.getStylePreference());
     bodyUI->textStyleComboBox->setCurrentIndex(index);
+    bodyUI->useNameColors->setChecked(s.getEnableGroupChatsColor());
 
     bodyUI->notify->setChecked(s.getNotify());
     // Note: UI is boolean inversed from settings to maintain setting file backwards compatibility
     bodyUI->groupOnlyNotfiyWhenMentioned->setChecked(!s.getGroupAlwaysNotify());
     bodyUI->groupOnlyNotfiyWhenMentioned->setEnabled(s.getNotify());
     bodyUI->notifySound->setChecked(s.getNotifySound());
+    bodyUI->notifyHide->setChecked(s.getNotifyHide());
     bodyUI->notifySound->setEnabled(s.getNotify());
     bodyUI->busySound->setChecked(s.getBusySound());
     bodyUI->busySound->setEnabled(s.getNotifySound() && s.getNotify());
+#if DESKTOP_NOTIFICATIONS
+    bodyUI->desktopNotify->setChecked(s.getDesktopNotify());
+    bodyUI->desktopNotify->setEnabled(s.getNotify());
+#else
+    bodyUI->desktopNotify->hide();
+#endif
 
     bodyUI->showWindow->setChecked(s.getShowWindow());
 
@@ -143,7 +148,7 @@ UserInterfaceForm::UserInterfaceForm(SettingsWidget* myParent)
 
     QStringList dateFormats;
     dateFormats << QStringLiteral("yyyy-MM-dd") // ISO 8601
-                // format strings from system locale
+                                                // format strings from system locale
                 << ql.dateFormat(QLocale::LongFormat) << ql.dateFormat(QLocale::ShortFormat)
                 << ql.dateFormat(QLocale::NarrowFormat) << "dd-MM-yyyy"
                 << "d-MM-yyyy"
@@ -271,6 +276,7 @@ void UserInterfaceForm::on_notify_stateChanged()
     bodyUI->groupOnlyNotfiyWhenMentioned->setEnabled(notify);
     bodyUI->notifySound->setEnabled(notify);
     bodyUI->busySound->setEnabled(notify && bodyUI->notifySound->isChecked());
+    bodyUI->desktopNotify->setEnabled(notify);
 }
 
 void UserInterfaceForm::on_notifySound_stateChanged()
@@ -278,6 +284,12 @@ void UserInterfaceForm::on_notifySound_stateChanged()
     const bool notify = bodyUI->notifySound->isChecked();
     Settings::getInstance().setNotifySound(notify);
     bodyUI->busySound->setEnabled(notify);
+}
+
+void UserInterfaceForm::on_desktopNotify_stateChanged()
+{
+    const bool notify = bodyUI->desktopNotify->isChecked();
+    Settings::getInstance().setDesktopNotify(notify);
 }
 
 void UserInterfaceForm::on_busySound_stateChanged()
@@ -375,3 +387,14 @@ void UserInterfaceForm::on_txtChatFontSize_valueChanged(int px)
         s.setChatMessageFont(tmpFont);
     }
 }
+
+void UserInterfaceForm::on_useNameColors_stateChanged(int value)
+{
+    Settings::getInstance().setEnableGroupChatsColor(value);
+}
+
+void UserInterfaceForm::on_notifyHide_stateChanged(int value)
+{
+    Settings::getInstance().setNotifyHide(value);
+}
+

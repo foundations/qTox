@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: GPL-3.0+
 #
-# Copyright © 2018 by The qTox Project Contributors
+# Copyright © 2018-2019 by The qTox Project Contributors
 #
 # This script should be run from the root of the repository
 
@@ -48,5 +48,7 @@ fi
 # use the version number in the name when building a tag on Travis CI
 if [ -n "$TRAVIS_TAG" ]
 then
-    mv ./output/*.flatpak ./output/qTox-"$TRAVIS_TAG".x86_64.flatpak
+    readonly OUTFILE=./output/qTox-"$TRAVIS_TAG".x86_64.flatpak
+    mv ./output/*.flatpak "$OUTFILE"
+    sha256sum "$OUTFILE" > "$OUTFILE".sha256
 fi

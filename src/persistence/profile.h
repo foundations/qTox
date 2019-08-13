@@ -1,5 +1,5 @@
 /*
-    Copyright © 2015-2018 by The qTox Project Contributors
+    Copyright © 2015-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -34,13 +34,16 @@
 #include <QVector>
 #include <memory>
 
+class Settings;
+
 class Profile : public QObject
 {
     Q_OBJECT
 
 public:
-    static Profile* loadProfile(QString name, const QString& password = QString());
-    static Profile* createProfile(QString name, QString password);
+    static Profile* loadProfile(const QString& name, const QString& password, const Settings& settings);
+    static Profile* createProfile(const QString& name, const QString& password,
+                                  const Settings& settings);
     ~Profile();
 
     Core* getCore();
@@ -67,8 +70,7 @@ public:
 
     bool rename(QString newName);
 
-    static void scanProfiles();
-    static QStringList getProfiles();
+    static const QStringList getAllProfileNames();
 
     static bool exists(QString name);
     static bool isEncrypted(QString name);
@@ -85,12 +87,13 @@ signals:
     // TODO(sudden6): this doesn't seem to be the right place for Core errors
     void failedToStart();
     void badProxy();
+    void coreChanged(Core& core);
 
 public slots:
     void onRequestSent(const ToxPk& friendPk, const QString& message);
 
 private slots:
-    void loadDatabase(const ToxId& id, QString password);
+    void loadDatabase(QString password);
     void saveAvatar(const ToxPk& owner, const QByteArray& avatar);
     void removeAvatar(const ToxPk& owner);
     void onSaveToxSave();
@@ -98,18 +101,18 @@ private slots:
     void onAvatarOfferReceived(uint32_t friendId, uint32_t fileId, const QByteArray& avatarHash);
 
 private:
-    Profile(QString name, const QString& password, bool newProfile, const QByteArray& toxsave);
+    Profile(const QString& name, const QString& password, std::unique_ptr<ToxEncrypt> passkey);
     static QStringList getFilesByExt(QString extension);
     QString avatarPath(const ToxPk& owner, bool forceUnencrypted = false);
     bool saveToxSave(QByteArray data);
-    void initCore(const QByteArray& toxsave, ICoreSettings& s, bool isNewProfile);
+    void initCore(const QByteArray& toxsave, const ICoreSettings& s, bool isNewProfile);
 
 private:
     std::unique_ptr<Core> core = nullptr;
     QString name;
     std::unique_ptr<ToxEncrypt> passkey = nullptr;
     std::shared_ptr<RawDatabase> database;
-    std::unique_ptr<History> history;
+    std::shared_ptr<History> history;
     bool isRemoved;
     bool encrypted = false;
     static QStringList profiles;

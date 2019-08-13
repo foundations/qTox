@@ -1,5 +1,5 @@
 /*
-    Copyright © 2017-2018 by The qTox Project Contributors
+    Copyright © 2017-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -20,6 +20,7 @@
 #include "iprofileinfo.h"
 
 class Core;
+class QFile;
 class QPoint;
 class Profile;
 
@@ -50,6 +51,9 @@ public:
     void removeAvatar() override;
 
 private:
+    IProfileInfo::SetAvatarResult createAvatarFromFile(QFile& file, QByteArray& avatar);
+    IProfileInfo::SetAvatarResult byteArrayToPng(QByteArray inData, QByteArray& outPng);
+    IProfileInfo::SetAvatarResult scalePngToAvatar(QByteArray& avatar);
     Profile* const profile;
     Core* const core;
 };

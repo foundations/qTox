@@ -1,3 +1,22 @@
+/*
+    Copyright © 2019 by The qTox Project Contributors
+
+    This file is part of qTox, a Qt-based graphical interface for Tox.
+
+    qTox is libre software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    qTox is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with qTox.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "searchsettingsform.h"
 #include "ui_searchsettingsform.h"
 #include "src/persistence/settings.h"
@@ -15,9 +34,8 @@ SearchSettingsForm::SearchSettingsForm(QWidget *parent) :
 
     ui->choiceDateButton->setAttribute(Qt::WA_LayoutUsesWidgetRect);
     ui->choiceDateButton->setObjectName(QStringLiteral("choiceDateButton"));
-    ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/buttons.css")));
 
-    ui->startDateLabel->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/labels.css")));
+    reloadTheme();
 
     connect(ui->startSearchComboBox, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
             this, &SearchSettingsForm::onStartSearchSelected);
@@ -68,16 +86,22 @@ ParameterSearch SearchSettingsForm::getParameterSearch()
         break;
     }
 
-    ps.date = startDate;
+    ps.time = startTime;
     ps.isUpdate = isUpdate;
     isUpdate = false;
 
     return ps;
 }
 
+void SearchSettingsForm::reloadTheme()
+{
+    ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
+    ui->startDateLabel->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/labels.css")));
+}
+
 void SearchSettingsForm::updateStartDateLabel()
 {
-    ui->startDateLabel->setText(startDate.toString(Settings::getInstance().getDateFormat()));
+    ui->startDateLabel->setText(startTime.toString(Settings::getInstance().getDateFormat()));
 }
 
 void SearchSettingsForm::setUpdate(const bool isUpdate)
@@ -93,10 +117,10 @@ void SearchSettingsForm::onStartSearchSelected(const int index)
         ui->startDateLabel->setEnabled(true);
 
         ui->choiceDateButton->setProperty("state", QStringLiteral("green"));
-        ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/buttons.css")));
+        ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
 
-        if (startDate.isNull()) {
-            startDate = QDate::currentDate();
+        if (startTime.isNull()) {
+            startTime = QDateTime::currentDateTime();
             updateStartDateLabel();
         }
 
@@ -105,7 +129,7 @@ void SearchSettingsForm::onStartSearchSelected(const int index)
         ui->startDateLabel->setEnabled(false);
 
         ui->choiceDateButton->setProperty("state", QString());
-        ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral(":/ui/chatForm/buttons.css")));
+        ui->choiceDateButton->setStyleSheet(Style::getStylesheet(QStringLiteral("chatForm/buttons.css")));
     }
 
     setUpdate(true);
@@ -137,11 +161,9 @@ void SearchSettingsForm::onRegularClicked(const bool checked)
 
 void SearchSettingsForm::onChoiceDate()
 {
-    LoadHistoryDialog dlg;
-    dlg.setTitle(tr("Select Date Dialog"));
-    dlg.setInfoLabel(tr("Select a date"));
+    LoadHistoryDialog dlg(LoadHistoryDialog::search);
     if (dlg.exec()) {
-        startDate = dlg.getFromDate().date();
+        startTime = dlg.getFromDate();
         updateStartDateLabel();
     }
 

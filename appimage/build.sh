@@ -2,7 +2,7 @@
 
 # MIT License
 #
-# Copyright © 2018 by The qTox Project Contributors
+# Copyright © 2019 by The qTox Project Contributors
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -22,7 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-
 # Fail out on error
 set -exuo pipefail
 
@@ -40,14 +39,43 @@ readonly AITOOL_BUILD_DIR="$BUILD_DIR"/aitool
 readonly SQLCIPHER_BUILD_DIR="$BUILD_DIR"/sqlcipher
 # ldqt binary
 readonly LDQT_BIN="/usr/lib/x86_64-linux-gnu/qt5/bin/linuxdeployqt"
+# aitool binary
+readonly AITOOL_BIN="/usr/local/bin/appimagetool"
+readonly APPRUN_BIN="/usr/local/bin/AppRun"
 readonly APT_FLAGS="-y --no-install-recommends"
+# snorenotify source
+readonly SNORE_GIT="https://github.com/KDE/snorenotify"
+# snorenotify build directory
+readonly SNORE_BUILD_DIR="$BUILD_DIR"/snorenotify
+# "appimage updater bridge" becomes aub
+readonly AUB_SRC_DIR="$BUILD_DIR"/aub
+# aub source
+readonly AUB_GIT="https://github.com/antony-jr/AppImageUpdaterBridge"
+# aub build dir
+readonly AUB_BUILD_DIR="$BUILD_DIR"/aub/build
+
+# update information to be embeded in AppImage
+if [ "cron" == "${TRAVIS_EVENT_TYPE:-}" ]
+then
+    # update information for nightly version
+    readonly NIGHTLY_REPO_SLUG=$(echo "$CIRP_GITHUB_REPO_SLUG" | tr "/" "|")
+    readonly UPDATE_INFO="gh-releases-zsync|$NIGHTLY_REPO_SLUG|ci-master-latest|qTox-*-x86_64.AppImage.zsync"
+else
+    # update information for stable version
+    readonly UPDATE_INFO="gh-releases-zsync|qTox|qTox|latest|qTox-*.x86_64.AppImage.zsync"
+fi
+
 # use multiple cores when building
 export MAKEFLAGS="-j$(nproc)"
 
 # Get packages
 apt-get update
 apt-get install $APT_FLAGS sudo ca-certificates wget build-essential fuse xxd \
-git g++ patchelf tclsh libssl-dev
+git patchelf tclsh libssl-dev cmake extra-cmake-modules build-essential \
+check checkinstall libavdevice-dev libexif-dev libgdk-pixbuf2.0-dev \
+libgtk2.0-dev libopenal-dev libopus-dev libqrencode-dev libqt5opengl5-dev \
+libqt5svg5-dev libsodium-dev libtool libvpx-dev libxss-dev \
+qt5-default qttools5-dev qttools5-dev-tools qtdeclarative5-dev
 
 # get version
 cd "$QTOX_SRC_DIR"
@@ -57,6 +85,17 @@ export VERSION=$(git rev-parse --short HEAD)
 
 # create build directory
 mkdir -p "$BUILD_DIR"
+
+# install snorenotify because it's not packaged
+cd "$BUILD_DIR"
+git clone "$SNORE_GIT" "$SNORE_BUILD_DIR"
+cd "$SNORE_BUILD_DIR"
+git checkout tags/v0.7.0
+# HACK: Kids, don't do this at your home system
+cmake -DCMAKE_INSTALL_PREFIX=/usr/
+make
+make install
+
 cd "$BUILD_DIR"
 
 # we need a custom built sqlcipher version because of a Debian bug
@@ -70,20 +109,38 @@ LDFLAGS="-lcrypto"
 make
 make install
 
+# build aub into a static library and later use it in
+# qTox
+git clone "$AUB_GIT" "$AUB_SRC_DIR"
+cd "$AUB_SRC_DIR" # we need to checkout first
+git checkout tags/v1.1.2
+mkdir $AUB_BUILD_DIR
+cd $AUB_BUILD_DIR
+cmake .. -DLOGGING_DISABLED=ON
+
+make
+make install
+
 # copy qtox source
 cp -r "$QTOX_SRC_DIR" "$QTOX_BUILD_DIR"
 cd "$QTOX_BUILD_DIR"
 
+./bootstrap.sh
+
 # ensure this directory is empty
 rm -rf ./_build
-
-# reuse for our purposes, pass flags to automatically install packages
-# APT_FLAGS for automatic install
-# True to not install sqlcipher
-./simple_make.sh "$APT_FLAGS" True
+mkdir -p ./_build
 
 # build dir of simple_make
 cd _build
+
+# need to build with -DDESKTOP_NOTIFICATIONS=True for snorenotify
+cmake -DDESKTOP_NOTIFICATIONS=True \
+      -DUPDATE_CHECK=True \
+      -DAPPIMAGE_UPDATER_BRIDGE=True \
+      ../
+
+make
 
 make DESTDIR="$QTOX_APP_DIR" install ; find "$QTOX_APP_DIR"
 
@@ -100,7 +157,7 @@ make install
 # is master as of 2018-04-25
 AITOOL_HASH="5d93115f279d94a4d23dfd64fb8ccd109e98f039"
 # build appimagetool
-git clone -b appimagetool/master --single-branch --recursive \
+git clone -b master --single-branch --recursive \
 https://github.com/AppImage/AppImageKit "$AITOOL_BUILD_DIR"
 
 cd "$AITOOL_BUILD_DIR"
@@ -128,8 +185,28 @@ unset QTDIR; unset QT_PLUGIN_PATH; unset LD_LIBRARY_PATH;
 
 readonly QTOX_DESKTOP_FILE="$QTOX_APP_DIR"/usr/local/share/applications/*.desktop
 
-eval "$LDQT_BIN $QTOX_DESKTOP_FILE -bundle-non-qt-libs"
-eval "$LDQT_BIN $QTOX_DESKTOP_FILE -appimage"
+eval "$LDQT_BIN $QTOX_DESKTOP_FILE -bundle-non-qt-libs -extra-plugins=libsnore-qt5"
+
+# Move the required files to the correct directory
+mv "$QTOX_APP_DIR"/usr/* "$QTOX_APP_DIR/"
+rm -rf "$QTOX_APP_DIR/usr"
+
+# copy OpenSSL libs to AppImage
+# Warning: This is hard coded to debain:stretch.
+cp /usr/lib/x86_64-linux-gnu/libssl.so* "$QTOX_APP_DIR/local/lib/"
+cp /usr/lib/x86_64-linux-gnu/libcrypt.so* "$QTOX_APP_DIR/local/lib/"
+cp /usr/lib/x86_64-linux-gnu/libcrypto.so* "$QTOX_APP_DIR/local/lib"
+# Also bundle libjack.so* without which the AppImage does not work in Fedora Workstation
+cp /usr/lib/x86_64-linux-gnu/libjack.so* "$QTOX_APP_DIR/local/lib"
+
+# this is important , aitool automatically uses the same filename in .zsync meta file.
+# if this name does not match with the one we upload , the update always fails.
+if [ -n "$TRAVIS_TAG" ]
+then
+    eval "$AITOOL_BIN -u \"$UPDATE_INFO\" $QTOX_APP_DIR qTox-$TRAVIS_TAG.x86_64.AppImage"
+else
+    eval "$AITOOL_BIN -u \"$UPDATE_INFO\" $QTOX_APP_DIR qTox-$TRAVIS_COMMIT-x86_64.AppImage"
+fi
 
 # Chmod since everything is root:root
 chmod 755 -R "$OUTPUT_DIR"

@@ -1,5 +1,5 @@
 /*
-    Copyright © 2014-2018 by The qTox Project Contributors
+    Copyright © 2014-2019 by The qTox Project Contributors
 
     This file is part of qTox, a Qt-based graphical interface for Tox.
 
@@ -575,7 +575,9 @@ AVFrame* VideoFrame::generateAVFrame(const QSize& dimensions, const int pixelFor
 
     int bufSize;
 
-    if (!requireAligned || (dimensions.width() % 8 == 0 && dimensions.height() % 8 == 0)) {
+    const bool alreadyAligned = dimensions.width() % dataAlignment == 0 && dimensions.height() % dataAlignment == 0;
+
+    if (!requireAligned || alreadyAligned) {
         bufSize = av_image_alloc(ret->data, ret->linesize, dimensions.width(), dimensions.height(),
                                  static_cast<AVPixelFormat>(pixelFormat), dataAlignment);
     } else {
